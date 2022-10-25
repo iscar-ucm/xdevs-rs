@@ -320,6 +320,25 @@ pub trait AsComponent: Debug {
     }
 }
 
+/// Helper macro to implement the AsComponent trait.
+/// You can use this macro with any struct containing a field `component` of type [`Component`].
+#[macro_export]
+macro_rules! impl_component {
+    ($($COMPONENT:ident),+) => {
+        $(
+            impl AsComponent for $COMPONENT {
+                fn as_component(&self) -> &Component {
+                    &self.component
+                }
+                fn as_component_mut(&mut self) -> &mut Component {
+                    &mut self.component
+                }
+            }
+        )+
+    }
+}
+pub use impl_component;
+
 #[cfg(test)]
 mod tests {
     use super::*;

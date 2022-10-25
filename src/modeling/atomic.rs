@@ -60,15 +60,7 @@ mod tests {
         }
     }
 
-    impl AsComponent for TestAtomic {
-        fn as_component(&self) -> &Component {
-            &self.component
-        }
-
-        fn as_component_mut(&mut self) -> &mut Component {
-            &mut self.component
-        }
-    }
+    impl_component!(TestAtomic); // impl_component automatically implements the AsComponent
 
     impl AtomicInterface for TestAtomic {
         fn lambda(&self) {
