@@ -1,27 +1,24 @@
-use super::{
-    coupling::{CouplingBridge, CouplingsHashMap},
-    AsComponent, Component,
-};
+use super::{AsComponent, AsPort, Component, RcHash, Shared};
 use std::boxed::Box;
 use std::collections::{HashMap, HashSet};
 
-// TODO seguramente necesite un enum o algo para clasificar bien Atomics y Coupleds
-// TODO alomejor no es necesario -> con traits podemos convertir atomics en simulators y coupled en coordinators
-// TODO Para el flatten más de lo mismo -> puede ser un método de component, Atomic se devuelve a si mismo
+type CouplingsMap = HashMap<RcHash<dyn AsPort>, HashSet<RcHash<dyn AsPort>>>;
 
 /// Coupled DEVS model.
 #[derive(Debug)]
 pub struct Coupled {
     /// Component wrapped by the coupled model.
     component: Component,
-    /// Hash map with all the components of the coupled model.
+    /// Components set of the DEVS coupled model.
+    /// Components are arranged in a [`HashMap`] which keys are the component names.
+    /// Thus, component names must be unique.
     components: HashMap<String, Box<dyn AsComponent>>,
     /// External input couplings.
-    eic: CouplingsHashMap,
+    eic: CouplingsMap,
     /// Internal couplings.
-    ic: CouplingsHashMap,
+    ic: CouplingsMap,
     /// External output couplings.
-    eoc: CouplingsHashMap,
+    eoc: CouplingsMap,
 }
 
 impl Coupled {
@@ -34,6 +31,33 @@ impl Coupled {
             ic: HashMap::new(),
             eoc: HashMap::new(),
         }
+    }
+
+    fn _add_component<T: 'static + AsComponent>(&mut self, component: T) {
+        let component_name = component.get_name();
+        if self.components.contains_key(component_name) {
+            panic!(
+                "coupled model {} already contains component with name {}",
+                self.component.name, component_name
+            )
+        }
+        self.components
+            .insert(component_name.to_string(), Box::new(component));
+    }
+
+    /// Returns false if coupling was already defined
+    fn add_coupling(
+        couplings: &mut CouplingsMap,
+        port_from: Shared<dyn AsPort>,
+        port_to: Shared<dyn AsPort>,
+    ) -> bool {
+        if !port_from.is_compatible(&*port_to) {
+            panic!("ports {} and {} are incompatible", port_from, port_to);
+        }
+        let ports_from = couplings
+            .entry(RcHash(port_to))
+            .or_insert_with(HashSet::new);
+        ports_from.insert(RcHash(port_from))
     }
 }
 
@@ -52,32 +76,14 @@ pub trait AsCoupled: AsComponent {
     /// use xdevs::modeling::{AsCoupled, Coupled};
     ///
     /// let mut top_coupled = Coupled::new("top_coupled");
-    /// top_coupled.add_component(Box::new(Coupled::new("component")));
-    /// // top_coupled.add_component(Box::new(Coupled::new("component")));  // this panics (duplicate name)
+    /// top_coupled.add_component(Coupled::new("component"));
+    /// // top_coupled.add_component(Coupled::new("component"));  // this panics (duplicate name)
     /// ```
-    fn add_component(&mut self, mut component: Box<dyn AsComponent>) {
-        if self
-            .as_coupled()
-            .components
-            .contains_key(component.get_name())
-        {
-            panic!(
-                "coupled model {} already contains component with name {}",
-                self.get_name(),
-                component.get_name()
-            )
-        }
-        component.as_component_mut().set_parent(self.as_component());
-        self.as_coupled_mut()
-            .components
-            .insert(component.get_name().to_string(), component);
-    }
-
-    fn add_comp<T: AsComponent + 'static>(&mut self, component: T)
+    fn add_component<T: AsComponent + 'static>(&mut self, component: T)
     where
         Self: Sized,
     {
-        self.add_component(Box::new(component) as Box<dyn AsComponent>);
+        self.as_coupled_mut()._add_component(component);
     }
 
     /// Returns a dynamic reference to a component with the provided name.
@@ -89,7 +95,7 @@ pub trait AsCoupled: AsComponent {
     ///
     /// let mut top_coupled = Coupled::new("top_coupled");
     /// assert!(top_coupled.try_get_component("component_1").is_none());
-    /// top_coupled.add_component(Box::new(Coupled::new("component_1")));
+    /// top_coupled.add_component(Coupled::new("component_1"));
     /// assert!(top_coupled.try_get_component("component_1").is_some());
     /// ```
     fn try_get_component(&self, component_name: &str) -> Option<&dyn AsComponent> {
@@ -105,7 +111,7 @@ pub trait AsCoupled: AsComponent {
     ///
     /// let mut top_coupled = Coupled::new("top_coupled");
     /// // let _component = top_coupled.get_component("component_1");  // this panics (no component)
-    /// top_coupled.add_component(Box::new(Coupled::new("component_1")));
+    /// top_coupled.add_component(Coupled::new("component_1"));
     /// let _component = top_coupled.get_component("component_1");
     /// ```
     fn get_component(&self, component_name: &str) -> &dyn AsComponent {
@@ -136,30 +142,20 @@ pub trait AsCoupled: AsComponent {
     /// component.add_in_port::<i32>("input");
     /// let mut top_coupled = Coupled::new("top_coupled");
     /// top_coupled.add_in_port::<i32>("input");
-    /// top_coupled.add_component(Box::new(component));
+    /// top_coupled.add_component(component);
     ///
     /// top_coupled.add_eic("input", "component", "input");
     /// // top_coupled.add_eic("input", "component", "input");  // this panics (duplicate coupling)
     /// ```
     fn add_eic(&mut self, port_from_name: &str, component_to_name: &str, port_to_name: &str) {
-        let port_from = self.get_in_port(port_from_name);
+        let port_from = self.as_component().get_in_port(port_from_name);
         let component = self.get_component(component_to_name);
-        let port_to = component.get_in_port(port_to_name);
-        if !port_from.is_compatible(&*port_to) {
-            panic!("ports {} and {} are incompatible", port_from, port_to);
-        }
-        let left_bridge = CouplingBridge::new(self.get_name(), port_from);
-        let right_bridge = CouplingBridge::new(component_to_name, port_to);
-        let couplings = self
-            .as_coupled_mut()
-            .eic
-            .entry(left_bridge)
-            .or_insert_with(HashSet::new);
-        if !couplings.insert(right_bridge) {
+        let port_to = component.as_component().get_in_port(port_to_name);
+        if !Coupled::add_coupling(&mut self.as_coupled_mut().eic, port_from, port_to) {
             panic!(
                 "EIC coupling {}->{}::{} is already defined",
                 port_from_name, component_to_name, port_to_name
-            );
+            )
         }
     }
 
@@ -179,12 +175,12 @@ pub trait AsCoupled: AsComponent {
     /// use xdevs::modeling::{AsComponent, AsCoupled, Coupled};
     ///
     /// let mut component_1 = Coupled::new("component_1");
-    /// component_1.as_component_mut().add_out_port::<i32>("output");
+    /// component_1.add_out_port::<i32>("output");
     /// let mut component_2 = Coupled::new("component_2");
     /// component_2.add_in_port::<i32>("input");
     /// let mut top_coupled = Coupled::new("top_coupled");
-    /// top_coupled.add_component(Box::new(component_1));
-    /// top_coupled.add_component(Box::new(component_2));
+    /// top_coupled.add_component(component_1);
+    /// top_coupled.add_component(component_2);
     ///
     /// top_coupled.add_ic("component_1", "output", "component_2", "input");
     /// // top_coupled.add_ic("component_1", "output", "component_2", "input");  // this panics (duplicate coupling)
@@ -196,21 +192,11 @@ pub trait AsCoupled: AsComponent {
         component_to_name: &str,
         port_to_name: &str,
     ) {
-        let component_from = self.get_component(component_from_name);
+        let component_from = self.get_component(component_from_name).as_component();
         let port_from = component_from.get_out_port(port_from_name);
         let component_to = self.get_component(component_to_name);
-        let port_to = component_to.get_in_port(port_to_name);
-        if !port_from.is_compatible(&*port_to) {
-            panic!("ports {} and {} are incompatible", port_from, port_to);
-        }
-        let left_bridge = CouplingBridge::new(component_from_name, port_from);
-        let right_bridge = CouplingBridge::new(component_to_name, port_to);
-        let couplings = self
-            .as_coupled_mut()
-            .ic
-            .entry(left_bridge)
-            .or_insert_with(HashSet::new);
-        if !couplings.insert(right_bridge) {
+        let port_to = component_to.as_component().get_in_port(port_to_name);
+        if !Coupled::add_coupling(&mut self.as_coupled_mut().ic, port_from, port_to) {
             panic!(
                 "IC coupling {}::{}->{}::{} is already defined",
                 component_from_name, port_from_name, component_to_name, port_to_name
@@ -233,29 +219,19 @@ pub trait AsCoupled: AsComponent {
     /// use xdevs::modeling::{AsComponent, AsCoupled, Coupled};
     ///
     /// let mut component = Coupled::new("component");
-    /// component.as_component_mut().add_out_port::<i32>("output");
+    /// component.add_out_port::<i32>("output");
     /// let mut top_coupled = Coupled::new("top_coupled");
-    /// top_coupled.as_component_mut().add_out_port::<i32>("output");
-    /// top_coupled.add_component(Box::new(component));
+    /// top_coupled.add_out_port::<i32>("output");
+    /// top_coupled.add_component(component);
     ///
     /// top_coupled.add_eoc("component", "output", "output");
     /// // top_coupled.add_eoc("component", "output", "output");  // this panics (duplicate coupling)
     /// ```
     fn add_eoc(&mut self, component_from_name: &str, port_from_name: &str, port_to_name: &str) {
-        let component = self.get_component(component_from_name);
+        let component = self.get_component(component_from_name).as_component();
         let port_from = component.get_out_port(port_from_name);
-        let port_to = self.get_out_port(port_to_name);
-        if !port_from.is_compatible(&*port_to) {
-            panic!("ports {} and {} are incompatible", port_from, port_to);
-        }
-        let left_bridge = CouplingBridge::new(component_from_name, port_from);
-        let right_bridge = CouplingBridge::new(self.get_name(), port_to);
-        let couplings_to = self
-            .as_coupled_mut()
-            .eoc
-            .entry(left_bridge)
-            .or_insert_with(HashSet::new);
-        if !couplings_to.insert(right_bridge) {
+        let port_to = self.as_component().get_out_port(port_to_name);
+        if !Coupled::add_coupling(&mut self.as_coupled_mut().eoc, port_from, port_to) {
             panic!(
                 "EOC coupling <{}::{}->{}> is already defined",
                 component_from_name, port_from_name, port_to_name
@@ -274,10 +250,7 @@ impl AsCoupled for Coupled {
     }
 }
 
-impl<T> AsComponent for T
-where
-    T: AsCoupled,
-{
+impl<T: AsCoupled> AsComponent for T {
     fn as_component(&self) -> &Component {
         &self.as_coupled().component
     }
@@ -286,6 +259,26 @@ where
         &mut self.as_coupled_mut().component
     }
 }
+
+/// Helper macro to implement the AsCoupled trait.
+/// You can use this macro with any struct containing a field `coupled` of type [`Coupled`].
+/// TODO try to use the derive stuff (it will be more elegant).
+#[macro_export]
+macro_rules! impl_coupled {
+    ($($COUPLED:ident),+) => {
+        $(
+            impl AsCoupled for $COUPLED {
+                fn as_coupled(&self) -> &Coupled {
+                    &self.coupled
+                }
+                fn as_coupled_mut(&mut self) -> &mut Coupled {
+                    &mut self.coupled
+                }
+            }
+        )+
+    }
+}
+pub use impl_coupled;
 
 #[cfg(test)]
 mod tests {
@@ -297,8 +290,8 @@ mod tests {
     )]
     fn test_duplicate_component() {
         let mut top_coupled = Coupled::new("top_coupled");
-        top_coupled.add_component(Box::new(Coupled::new("component")));
-        top_coupled.add_component(Box::new(Coupled::new("component")));
+        top_coupled.add_component(Coupled::new("component"));
+        top_coupled.add_component(Coupled::new("component"));
     }
 
     #[test]
@@ -308,7 +301,7 @@ mod tests {
     fn test_get_component() {
         let mut top_coupled = Coupled::new("top_coupled");
         assert!(top_coupled.try_get_component("component_1").is_none());
-        top_coupled.add_component(Box::new(Coupled::new("component_1")));
+        top_coupled.add_component(Coupled::new("component_1"));
         assert!(top_coupled.try_get_component("component_1").is_some());
         assert_eq!(
             "component_1",
@@ -346,8 +339,8 @@ mod tests {
     )]
     fn test_eic_bad_port_to() {
         let mut top_coupled = Coupled::new("top_coupled");
-        top_coupled.as_component_mut().add_in_port::<i32>("input");
-        top_coupled.add_component(Box::new(Coupled::new("component")));
+        top_coupled.add_in_port::<i32>("input");
+        top_coupled.add_component(Coupled::new("component"));
         top_coupled.add_eic("input", "component", "bad_output");
     }
 
@@ -358,7 +351,7 @@ mod tests {
         top_coupled.add_in_port::<i32>("input");
         let mut component = Coupled::new("component");
         component.add_in_port::<i64>("input");
-        top_coupled.add_component(Box::new(component));
+        top_coupled.add_component(component);
         top_coupled.add_eic("input", "component", "input");
     }
 
@@ -369,10 +362,8 @@ mod tests {
         top_coupled.add_in_port::<i32>("input");
         let mut component = Coupled::new("component");
         component.add_in_port::<i32>("input");
-        top_coupled.add_component(Box::new(component));
+        top_coupled.add_component(component);
         top_coupled.add_eic("input", "component", "input");
         top_coupled.add_eic("input", "component", "input");
     }
-
-    // TODO seguir con esto
 }

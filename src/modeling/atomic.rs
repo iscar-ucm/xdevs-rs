@@ -1,7 +1,7 @@
 use super::AsComponent;
 
 /// Interface for atomic DEVS models.
-pub trait AtomicInterface: AsComponent {
+pub trait AsAtomic: AsComponent {
     /// Output function of the atomic DEVS model.
     fn lambda(&self);
 
@@ -27,7 +27,6 @@ pub trait AtomicInterface: AsComponent {
 #[cfg(test)]
 mod tests {
     use crate::modeling::*;
-    use std::rc::Rc;
 
     #[derive(Debug)]
     struct TestAtomic {
@@ -38,8 +37,8 @@ mod tests {
         n_delta_ext: i32,
         sigma: f64,
         // We add all the in/out ports of the model.
-        in_port: Rc<Port<i32>>,
-        out_port: Rc<Port<i32>>,
+        in_port: Port<i32>,
+        out_port: Port<i32>,
     }
 
     impl TestAtomic {
@@ -62,7 +61,7 @@ mod tests {
 
     impl_component!(TestAtomic); // impl_component automatically implements the AsComponent
 
-    impl AtomicInterface for TestAtomic {
+    impl AsAtomic for TestAtomic {
         fn lambda(&self) {
             self.out_port.add_value(self.n_delta_ext + self.n_delta_int);
         }
@@ -99,7 +98,7 @@ mod tests {
         assert_eq!(0, atomic.n_delta_int);
         assert_eq!(1, atomic.n_delta_ext);
         assert_eq!(0., atomic.sigma);
-        atomic.clear_in_ports();
+        atomic.component.clear_in_ports();
 
         atomic.lambda();
         assert_eq!(0, atomic.n_delta_int);
@@ -112,7 +111,7 @@ mod tests {
         assert_eq!(1, atomic.n_delta_int);
         assert_eq!(1, atomic.n_delta_ext);
         assert_eq!(f64::INFINITY, atomic.sigma);
-        atomic.clear_out_ports();
+        atomic.component.clear_out_ports();
         assert_eq!(0, atomic.out_port.len());
 
         atomic.add_input_value(0);
@@ -122,7 +121,7 @@ mod tests {
         assert_eq!(1, atomic.n_delta_int);
         assert_eq!(2, atomic.n_delta_ext);
         assert_eq!(3., atomic.sigma);
-        atomic.clear_in_ports();
+        atomic.component.clear_in_ports();
 
         atomic.lambda();
         assert_eq!(1, atomic.n_delta_int);
@@ -135,7 +134,7 @@ mod tests {
         assert_eq!(2, atomic.n_delta_int);
         assert_eq!(2, atomic.n_delta_ext);
         assert_eq!(f64::INFINITY, atomic.sigma);
-        atomic.clear_out_ports();
+        atomic.component.clear_out_ports();
         assert_eq!(0, atomic.out_port.len());
     }
 }

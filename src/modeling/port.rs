@@ -1,142 +1,89 @@
-use super::Component;
+use super::Shared;
 use std::any::{type_name, Any};
-use std::cell::{Ref, RefCell};
 use std::fmt::{Debug, Display, Formatter, Result as FmtResult};
+use std::ops::{Deref, DerefMut};
 
-/// Interface for DEVS ports.
-pub trait PortInterface: Debug + Display {
-    /// Returns the name of the port.
-    fn get_name(&self) -> &str;
+#[cfg(not(feature = "parallel"))]
+use std::cell::RefCell;
+#[cfg(feature = "parallel")]
+use std::sync::RwLock;
 
-    /// Returns raw pointer to parent component of the port.
-    fn get_parent(&self) -> *const Component;
+#[cfg(not(feature = "parallel"))]
+type Mutable<T> = RefCell<T>;
+#[cfg(feature = "parallel")]
+type Mutable<T> = RwLock<T>;
 
-    /// Port-to-any conversion.
-    fn as_any(&self) -> &dyn Any;
-
-    /// Returns `true` if the port does not contain any value.
-    fn is_empty(&self) -> bool;
-
-    /// It clears all the values in the port.
-    fn clear(&self);
-
-    /// Checks if one port is compatible with other.
-    fn is_compatible(&self, other: &dyn PortInterface) -> bool;
-
-    /// Propagates values from other port to the port.
-    fn propagate(&self, other: &dyn PortInterface);
-}
-
-/// DEVS port.
-#[derive(Debug)]
-pub struct Port<T: 'static + Copy + Debug + Display> {
-    /// Name of the port.
+/// DEVS port struct.
+#[derive(Clone, Debug)]
+pub struct Port<T> {
+    /// name of the port.
     name: String,
-    /// Pointer to parent component.
-    parent: *const Component,
-    /// Bag of values in the port. It is wrapped by a [`RefCell`] to provide interior mutability.
-    values: RefCell<Vec<T>>,
+    /// Message bag.
+    bag: Shared<Mutable<Vec<T>>>,
 }
 
-impl<T: 'static + Copy + Debug + Display> Port<T> {
-    /// Creates a new port with the given name. The port must belong to a DEVS component.
-    pub fn new(name: &str, parent: *const Component) -> Self {
+impl<T> Port<T> {
+    /// Constructor function.
+    pub fn new(name: &str) -> Self {
         Self {
             name: name.to_string(),
-            parent,
-            values: RefCell::new(vec![]),
+            bag: Shared::new(Mutable::new(Vec::new())),
         }
     }
 
-    /// Adds a new value to the port.
-    ///
-    /// # Examples
-    /// ```
-    /// use xdevs::modeling::Port;
-    /// let mut port = Port::<i32>::new("my_port", std::ptr::null());
-    /// port.add_value(1);
-    /// ```
-    pub fn add_value(&self, value: T) {
-        self.values.borrow_mut().push(value);
+    /// Helper function to get a reference to the message bag.
+    fn borrow_bag(&self) -> impl Deref<Target = Vec<T>> + '_ {
+        #[cfg(not(feature = "parallel"))]
+        return self.bag.borrow();
+        #[cfg(feature = "parallel")]
+        return self.bag.read().unwrap();
     }
 
-    /// Adds multiple values to the port.
-    ///
-    /// # Examples
-    /// ```
-    /// use xdevs::modeling::Port;
-    /// let mut port = Port::<i32>::new("my_port", std::ptr::null());
-    /// let values = vec![1, 2, 3];
-    /// port.add_values(&values);
-    pub fn add_values(&self, values: &[T]) {
-        self.values.borrow_mut().extend(values);
+    /// Helper function to get a mutable reference to the message bag.
+    fn borrow_bag_mut(&self) -> impl DerefMut<Target = Vec<T>> + '_ {
+        #[cfg(not(feature = "parallel"))]
+        return self.bag.borrow_mut();
+        #[cfg(feature = "parallel")]
+        return self.bag.write().unwrap();
     }
 
-    /// Checks if the port contains any message.
-    ///
-    /// # Examples
-    /// ```
-    /// use xdevs::modeling::Port;
-    /// let mut port = Port::<i32>::new("my_port", std::ptr::null());
-    /// assert!(port.is_empty());
-    /// port.add_value(2);
-    /// assert!(!port.is_empty());
-    /// ```
+    /// It checks if the message bag of the port is empty.
     pub fn is_empty(&self) -> bool {
-        self.values.borrow().is_empty()
+        self.borrow_bag().is_empty()
     }
 
-    /// Returns the number of messages in the port.
-    ///
-    /// # Examples
-    /// ```
-    /// use xdevs::modeling::Port;
-    /// let mut port = Port::<i32>::new("my_port", std::ptr::null());
-    /// assert_eq!(0, port.len());
-    /// port.add_value(2);
-    /// assert_eq!(1, port.len());
-    /// ```
+    /// It returns a reference to the message bag of the port.
+    pub fn get_values(&self) -> impl Deref<Target = Vec<T>> + '_ {
+        self.borrow_bag()
+    }
+
+    /// It returns the number of messages in the bag of the port.
     pub fn len(&self) -> usize {
-        self.values.borrow().len()
+        self.borrow_bag().len()
     }
 
-    /// It returns a [`Ref`] to the values in the port.
-    ///
-    /// # Examples
-    /// ```
-    /// use xdevs::modeling::Port;
-    /// let mut port = Port::<i32>::new("my_port", std::ptr::null());
-    /// for i in 0..10 {
-    ///     port.add_value(i);  // We add 10 values from 0 to 9.
-    /// }
-    /// let mut i = 0;
-    /// let vals = port.get_values();
-    /// assert_eq!(10, vals.len());
-    /// for val in vals.iter() {
-    ///     assert_eq!(i, *val);
-    ///     i += 1;
-    /// }
-    /// ```
-    pub fn get_values(&self) -> Ref<Vec<T>> {
-        self.values.borrow()
+    /// It adds a new value to the message bag of the port.
+    pub fn add_value(&self, value: T) {
+        self.borrow_bag_mut().push(value);
     }
+}
 
-    /// Converts a reference to [`PortInterface`] trait to a reference to [`Port<T>`].
-    /// If this conversion is not possible, it returns [`None`].
-    /// # Examples
-    /// ```
-    /// use xdevs::modeling::Port;
-    /// let port_a = Port::<i32>::new("port_a", std::ptr::null());  // Port implements the PortInterface trait
-    /// assert!(Port::<i32>::try_upgrade(&port_a).is_some());
-    /// assert!(Port::<i64>::try_upgrade(&port_a).is_none());
-    /// ```
-    pub fn try_upgrade(port: &dyn PortInterface) -> Option<&Port<T>> {
+impl<T: Clone> Port<T> {
+    /// It adds multiple values to the message bag of the port.
+    pub fn add_values(&self, values: &[T]) {
+        self.borrow_bag_mut().extend_from_slice(values);
+    }
+}
+
+impl<T: 'static> Port<T> {
+    /// Tries to convert a trait object [`AsPort`] to a reference to [`Port<T>`].
+    pub(crate) fn try_upgrade(port: &dyn AsPort) -> Option<&Port<T>> {
         port.as_any().downcast_ref::<Port<T>>()
     }
 
-    /// Converts a reference to [`PortInterface`] trait to a reference to [`Port<T>`].
-    /// If this conversion is not possible, it panics.
-    pub fn upgrade(port: &dyn PortInterface) -> &Port<T> {
+    /// Converts a trait object [`AsPort`] to a reference to [`Port<T>`].
+    /// It panics if this conversion is not possible.
+    pub(crate) fn upgrade(port: &dyn AsPort) -> &Port<T> {
         Port::<T>::try_upgrade(port).unwrap_or_else(|| {
             panic!(
                 "port {} is incompatible with value type {}",
@@ -146,66 +93,73 @@ impl<T: 'static + Copy + Debug + Display> Port<T> {
         })
     }
 
-    /// Checks if a reference to [`PortInterface`] can be upgraded to a reference to [`Port<T>`].
-    ///
-    /// # Examples
-    /// ```
-    /// use xdevs::modeling::Port;
-    /// let mut port_a = Port::<i32>::new("port_a", std::ptr::null());  // Port implements the PortInterface trait
-    /// assert!(Port::<i32>::is_compatible(&port_a));
-    /// assert!(!Port::<i64>::is_compatible(&port_a));
-    /// ```
-    pub fn is_compatible(port: &dyn PortInterface) -> bool {
+    /// Checks if a trait object [`AsPort`] can be upgraded to a reference to [`Port<T>`].
+    pub(crate) fn is_compatible(port: &dyn AsPort) -> bool {
         Port::<T>::try_upgrade(port).is_some()
     }
 }
 
-impl<T: 'static + Copy + Debug + Display> Display for Port<T> {
+impl<T> Display for Port<T> {
     fn fmt(&self, f: &mut Formatter<'_>) -> FmtResult {
         write!(f, "{}<{}>", self.name, type_name::<T>())
     }
 }
 
-impl<T: 'static + Copy + Debug + Display> PortInterface for Port<T> {
-    fn get_name(&self) -> &str {
-        &self.name
-    }
+/// Interface for DEVS ports.
+pub(crate) trait AsPort: Debug + Display {
+    /// Port-to-any conversion.
+    fn as_any(&self) -> &dyn Any;
 
-    fn get_parent(&self) -> *const Component {
-        self.parent
-    }
+    /// Returns the name of the port.
+    fn get_name(&self) -> &str;
 
+    /// Returns `true` if the port does not contain any value.
+    fn is_empty(&self) -> bool;
+
+    /// It clears all the values in the port.
+    fn clear(&self);
+
+    /// Checks if one port is compatible with other.
+    fn is_compatible(&self, other: &dyn AsPort) -> bool;
+
+    /// Propagates values from other port to the port.
+    fn propagate(&self, other: &dyn AsPort);
+}
+
+impl<T: 'static + Clone + Debug> AsPort for Port<T> {
     fn as_any(&self) -> &dyn Any {
         self
     }
 
+    fn get_name(&self) -> &str {
+        &self.name
+    }
+
     fn is_empty(&self) -> bool {
-        self.values.borrow().is_empty()
+        self.borrow_bag().is_empty()
     }
 
     fn clear(&self) {
-        self.values.borrow_mut().clear();
+        self.borrow_bag_mut().clear();
     }
 
-    fn is_compatible(&self, other: &dyn PortInterface) -> bool {
+    fn is_compatible(&self, other: &dyn AsPort) -> bool {
         Port::<T>::is_compatible(other)
     }
 
-    fn propagate(&self, port_from: &dyn PortInterface) {
-        self.values
-            .borrow_mut()
-            .extend(&*Port::<T>::upgrade(port_from).values.borrow());
+    fn propagate(&self, port_from: &dyn AsPort) {
+        self.borrow_bag_mut()
+            .extend_from_slice(&*Port::<T>::upgrade(port_from).borrow_bag());
     }
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
-    use std::ptr::null;
 
     #[test]
     fn test_port() {
-        let port_a = Port::new("port_a", null());
+        let port_a = Port::new("port_a");
         assert_eq!("port_a", port_a.get_name());
         assert_eq!("port_a<usize>", port_a.to_string());
         assert!(port_a.is_empty());
@@ -236,7 +190,7 @@ mod tests {
 
     #[test]
     fn test_port_trait() {
-        let port_a = Port::<i32>::new("port_a", null());
+        let port_a = Port::<i32>::new("port_a");
 
         assert!(Port::<i32>::is_compatible(&port_a));
         assert!(!Port::<i64>::is_compatible(&port_a));
@@ -247,14 +201,14 @@ mod tests {
     #[test]
     #[should_panic(expected = "port port_a<i32> is incompatible with value type i64")]
     fn test_port_upgrade_panics() {
-        let port_a = Port::<i32>::new("port_a", null());
+        let port_a = Port::<i32>::new("port_a");
         Port::<i64>::upgrade(&port_a);
     }
 
     #[test]
     fn test_propagate() {
-        let port_a = Port::new("port_a", null());
-        let port_b = Port::new("port_b", null());
+        let port_a = Port::new("port_a");
+        let port_b = Port::new("port_b");
 
         for i in 0..10 {
             port_a.add_value(i);

@@ -1,30 +1,20 @@
-use super::{Port, PortInterface};
+use super::{AsPort, Port, Shared};
 use std::collections::HashMap;
 use std::fmt::{Debug, Display, Formatter, Result as FmtResult};
-use std::ptr::null;
-use std::rc::Rc;
 
 /// DEVS component.
-#[derive(Debug)]
+#[derive(Clone, Debug)]
 pub struct Component {
     /// name of the DEVS component.
-    name: String,
-    /// Raw pointer to parent component.
-    parent: *const Component,
+    pub(crate) name: String,
     /// Input port set of the DEVS component.
     /// Input ports are arranged in a [`HashMap`] which keys are the port names.
     /// Thus, input port names must be unique.
-    in_ports: HashMap<String, Rc<dyn PortInterface>>,
+    in_ports: HashMap<String, Shared<dyn AsPort>>,
     /// Output port set of the DEVS component.
     /// Output ports are arranged in a [`HashMap`] which keys are the port names.
     /// Thus, output port names must be unique.
-    out_ports: HashMap<String, Rc<dyn PortInterface>>,
-    /// Serialized version of the input port set of the DEVS component.
-    /// It is faster to iterate over a vector than over the values of a hash map.
-    _in_ports: Vec<Rc<dyn PortInterface>>,
-    /// Serialized version of the output port set of the DEVS component.
-    /// It is faster to iterate over a vector than over the values of a hash map.
-    _out_ports: Vec<Rc<dyn PortInterface>>,
+    out_ports: HashMap<String, Shared<dyn AsPort>>,
 }
 
 /// Struct containing features that are common to all DEVS components.
@@ -33,61 +23,98 @@ impl Component {
     pub fn new(name: &str) -> Self {
         Self {
             name: name.to_string(),
-            parent: null(),
             in_ports: HashMap::new(),
             out_ports: HashMap::new(),
-            _in_ports: Vec::new(),
-            _out_ports: Vec::new(),
         }
     }
 
     /// Helper function to add a port to a component regardless of whether it is input or output.
-    fn add_port<T: 'static + Copy + Debug + Display>(
-        this: *const Self,
-        ports_map: &mut HashMap<String, Rc<dyn PortInterface>>,
-        ports_vec: &mut Vec<Rc<dyn PortInterface>>,
+    fn add_port<T: 'static + Clone + Debug + Display>(
+        ports_map: &mut HashMap<String, Shared<dyn AsPort>>,
         port_name: &str,
-    ) -> Option<Rc<Port<T>>> {
+    ) -> Option<Port<T>> {
         if ports_map.contains_key(port_name) {
             return None;
         }
-        let port_ref = Rc::new(Port::<T>::new(port_name, this));
-        let port_dyn_ref = port_ref.clone() as Rc<dyn PortInterface>;
-        ports_map.insert(port_name.to_string(), port_dyn_ref.clone());
-        ports_vec.push(port_dyn_ref);
-        Some(port_ref)
+        let port = Port::<T>::new(port_name);
+        ports_map.insert(port_name.to_string(), Shared::new(port.clone()));
+        Some(port)
     }
 
     /// Adds a new input port of type [`Port<T>`] to the component and returns a reference to it.
     /// It panics if there is already an input port with the same name.
-    fn _add_in_port<T: 'static + Copy + Debug + Display>(
-        &mut self,
-        port_name: &str,
-    ) -> Rc<Port<T>> {
-        Self::add_port(self, &mut self.in_ports, &mut self._in_ports, port_name).unwrap_or_else(
-            || {
-                panic!(
-                    "component {} already contains input port with name {}",
-                    self.name, port_name
-                )
-            },
-        )
+    fn _add_in_port<T: 'static + Clone + Debug + Display>(&mut self, port_name: &str) -> Port<T> {
+        Self::add_port(&mut self.in_ports, port_name).unwrap_or_else(|| {
+            panic!(
+                "component {} already contains input port with name {}",
+                self.name, port_name
+            )
+        })
     }
 
     /// Adds a new output port of type [`Port<T>`] to the component and returns a reference to it.
     /// It panics if there is already an output port with the same name.
-    fn _add_out_port<T: 'static + Copy + Debug + Display>(
-        &mut self,
-        port_name: &str,
-    ) -> Rc<Port<T>> {
-        Self::add_port(self, &mut self.out_ports, &mut self._out_ports, port_name).unwrap_or_else(
-            || {
-                panic!(
-                    "component {} already contains output port with name {}",
-                    self.name, port_name
-                )
-            },
-        )
+    fn _add_out_port<T: 'static + Clone + Debug + Display>(&mut self, port_name: &str) -> Port<T> {
+        Self::add_port(&mut self.out_ports, port_name).unwrap_or_else(|| {
+            panic!(
+                "component {} already contains output port with name {}",
+                self.name, port_name
+            )
+        })
+    }
+
+    /// Returns `true` if all the input ports of the component are empty.
+    pub(crate) fn is_input_empty(&self) -> bool {
+        self.in_ports.values().all(|port| port.is_empty())
+    }
+
+    /// Returns `true` if all the output ports are empty.
+    pub(crate) fn is_output_empty(&self) -> bool {
+        self.out_ports.values().all(|port| port.is_empty())
+    }
+
+    /// Clears all the input ports of the component.
+    pub(crate) fn clear_in_ports(&mut self) {
+        self.in_ports.values().for_each(|port| port.clear());
+    }
+
+    /// Clears all the output ports of the component.
+    pub(crate) fn clear_out_ports(&mut self) {
+        self.out_ports.values().for_each(|port| port.clear());
+    }
+
+    /// Returns a pointer to an input port with the given name.
+    /// If the component does not have any input port with this name, it returns [`None`].
+    fn try_get_in_port(&self, port_name: &str) -> Option<Shared<dyn AsPort>> {
+        Some(Shared::clone(self.as_component().in_ports.get(port_name)?))
+    }
+
+    /// Returns a pointer to an input port with the given name.
+    /// If the component does not have any input port with this name, it panics.
+    pub(crate) fn get_in_port(&self, port_name: &str) -> Shared<dyn AsPort> {
+        self.try_get_in_port(port_name).unwrap_or_else(|| {
+            panic!(
+                "component {} does not contain input port with name {}",
+                self.name, port_name
+            )
+        })
+    }
+
+    /// Returns a pointer to an output port with the given name.
+    /// If the component does not have any output port with this name, it returns [`None`].
+    fn try_get_out_port(&self, port_name: &str) -> Option<Shared<dyn AsPort>> {
+        Some(Shared::clone(self.as_component().out_ports.get(port_name)?))
+    }
+
+    /// Returns a pointer to an output port with the given name.
+    /// If the component does not have any output port with this name, it panics.
+    pub(crate) fn get_out_port(&self, port_name: &str) -> Shared<dyn AsPort> {
+        self.try_get_out_port(port_name).unwrap_or_else(|| {
+            panic!(
+                "component {} does not contain output port with name {}",
+                self.name, port_name
+            )
+        })
     }
 }
 
@@ -121,16 +148,6 @@ pub trait AsComponent: Debug {
         &self.as_component().name
     }
 
-    /// Returns a raw pointer to parent component.
-    fn get_parent(&self) -> *const Component {
-        self.as_component().parent
-    }
-
-    /// Sets the raw pointer to parent component.
-    fn set_parent(&mut self, parent: *const Component) {
-        self.as_component_mut().parent = parent;
-    }
-
     /// Adds a new input port of type [`Port<T>`] to the component and returns a reference to it.
     /// It panics if there is already an input port with the same name.
     ///
@@ -142,8 +159,9 @@ pub trait AsComponent: Debug {
     /// // let port_2 = component.add_in_port::<i32>("port_1");  // This panics, as there is already an output port with this name
     /// let port_2 = component.add_in_port::<i64>("port_2");  // A component can have output ports of different types
     /// ```
-    fn add_in_port<T: 'static + Copy + Debug + Display>(&mut self, port_name: &str) -> Rc<Port<T>>
+    fn add_in_port<T>(&mut self, port_name: &str) -> Port<T>
     where
+        T: 'static + Clone + Debug + Display,
         Self: Sized,
     {
         self.as_component_mut()._add_in_port(port_name)
@@ -160,8 +178,9 @@ pub trait AsComponent: Debug {
     /// // let port_2 = component.add_out_port::<i32>("port_1");  // This panics, as there is already an output port with this name
     /// let port_2 = component.add_out_port::<i64>("port_2");  // A component can have output ports of different types
     /// ```
-    fn add_out_port<T: 'static + Copy + Debug + Display>(&mut self, port_name: &str) -> Rc<Port<T>>
+    fn add_out_port<T>(&mut self, port_name: &str) -> Port<T>
     where
+        T: 'static + Clone + Debug + Display,
         Self: Sized,
     {
         self.as_component_mut()._add_out_port(port_name)
@@ -172,156 +191,11 @@ pub trait AsComponent: Debug {
 
     /// It performs all the required actions after a simulation. By default, it does nothing.
     fn exit(&mut self) {}
-
-    /// Returns `true` if all the input ports of the component are empty.
-    ///
-    /// # Examples
-    /// ```
-    /// use xdevs::modeling::{AsComponent, Component};
-    /// let mut component = Component::new("component");
-    /// let port_1 = component.add_in_port::<i32>("port_1");
-    /// assert!(component.is_input_empty());
-    /// port_1.add_value(2);
-    /// assert!(!component.is_input_empty());
-    /// ```
-    fn is_input_empty(&self) -> bool {
-        self.as_component()
-            ._in_ports
-            .iter()
-            .all(|port| port.is_empty())
-    }
-
-    /// Returns `true` if all the output ports are empty.
-    ///
-    /// # Examples
-    /// ```
-    /// use xdevs::modeling::{AsComponent, Component};
-    /// let mut component = Component::new("component");
-    /// let port_1 = component.add_out_port::<i32>("port_1");
-    /// assert!(component.is_output_empty());
-    /// port_1.add_value(2);
-    /// assert!(!component.is_output_empty());
-    /// ```
-    fn is_output_empty(&self) -> bool {
-        self.as_component()
-            ._out_ports
-            .iter()
-            .all(|port| port.is_empty())
-    }
-
-    /// Clears all the input ports of the component.
-    ///
-    /// # Examples
-    /// ```
-    /// use xdevs::modeling::{AsComponent, Component};
-    /// let mut component = Component::new("component");
-    /// let port_1 = component.add_in_port::<i32>("port_1");
-    /// port_1.add_value(2);
-    /// assert!(!component.is_input_empty());
-    /// component.clear_in_ports();
-    /// assert!(component.is_input_empty());
-    /// ```
-    fn clear_in_ports(&mut self) {
-        self.as_component_mut()
-            ._in_ports
-            .iter()
-            .for_each(|port| port.clear());
-    }
-
-    /// Clears all the output ports of the component.
-    ///
-    /// # Examples
-    /// ```
-    /// use xdevs::modeling::{AsComponent, Component};
-    /// let mut component = Component::new("component");
-    /// let port_1 = component.add_out_port::<i32>("port_1");
-    /// port_1.add_value(2);
-    /// assert!(!component.is_output_empty());
-    /// component.clear_out_ports();
-    /// assert!(component.is_output_empty());
-    /// ```
-    fn clear_out_ports(&mut self) {
-        self.as_component_mut()
-            ._out_ports
-            .iter()
-            .for_each(|port| port.clear());
-    }
-
-    /// Returns a pointer to an input port with the given name.
-    /// If the component does not have any input port with this name, it returns [`None`].
-    ///
-    /// # Examples
-    /// ```
-    /// use xdevs::modeling::{AsComponent, Component, Port, PortInterface};
-    /// let mut component = Component::new("component");
-    /// let port_1 = component.add_in_port::<i32>("port_1");
-    /// let port_try = component.try_get_in_port("port_1");
-    /// assert!(port_try.is_some());
-    /// assert!(component.try_get_in_port("port_2").is_none());
-    /// ```
-    fn try_get_in_port(&self, port_name: &str) -> Option<Rc<dyn PortInterface>> {
-        Some(self.as_component().in_ports.get(port_name)?.clone())
-    }
-
-    /// Returns a pointer to an input port with the given name.
-    /// If the component does not have any input port with this name, it panics.
-    ///
-    /// # Examples
-    /// ```
-    /// use xdevs::modeling::{AsComponent, Component, PortInterface};
-    /// let mut component = Component::new("component");
-    /// let port_1 = component.add_in_port::<i32>("port_1");
-    /// // assert!(component.get_in_port("port_2").is_none());  // this panics, as port_2 does not exist.
-    /// ```
-    fn get_in_port(&self, port_name: &str) -> Rc<dyn PortInterface> {
-        self.try_get_in_port(port_name).unwrap_or_else(|| {
-            panic!(
-                "component {} does not contain input port with name {}",
-                self.get_name(),
-                port_name
-            )
-        })
-    }
-
-    /// Returns a pointer to an output port with the given name.
-    /// If the component does not have any output port with this name, it returns [`None`].
-    ///
-    /// # Examples
-    /// ```
-    /// use xdevs::modeling::{AsComponent, Component, PortInterface};
-    /// let mut component = Component::new("component");
-    /// let port_1 = component.add_out_port::<i32>("port_1");
-    /// let port_try = component.try_get_out_port("port_1");
-    /// assert!(port_try.is_some());
-    /// assert!(component.try_get_out_port("port_2").is_none());
-    /// ```
-    fn try_get_out_port(&self, port_name: &str) -> Option<Rc<dyn PortInterface>> {
-        Some(self.as_component().out_ports.get(port_name)?.clone())
-    }
-
-    /// Returns a pointer to an output port with the given name.
-    /// If the component does not have any output port with this name, it panics.
-    ///
-    /// # Examples
-    /// ```
-    /// use xdevs::modeling::{AsComponent, Component, PortInterface};
-    /// let mut component = Component::new("component");
-    /// let port_1 = component.add_out_port::<i32>("port_1");
-    /// // assert!(component.get_out_port("port_2").is_none());  // this panics, as port_2 does not exist.
-    /// ```
-    fn get_out_port(&self, port_name: &str) -> Rc<dyn PortInterface> {
-        self.try_get_out_port(port_name).unwrap_or_else(|| {
-            panic!(
-                "component {} does not contain output port with name {}",
-                self.get_name(),
-                port_name
-            )
-        })
-    }
 }
 
 /// Helper macro to implement the AsComponent trait.
 /// You can use this macro with any struct containing a field `component` of type [`Component`].
+/// TODO try to use the derive stuff (it will be more elegant).
 #[macro_export]
 macro_rules! impl_component {
     ($($COMPONENT:ident),+) => {
@@ -342,7 +216,6 @@ pub use impl_component;
 #[cfg(test)]
 mod tests {
     use super::*;
-    use std::rc::Rc;
 
     #[test]
     #[should_panic(expected = "component component_a does not contain input port with name i32")]
@@ -382,7 +255,6 @@ mod tests {
         let in_i32 = a.add_in_port::<i32>("i32");
         let out_i32 = a.add_out_port::<i32>("i32");
         let out_f64 = a.add_out_port::<f64>("f64");
-        assert_eq!(3, Rc::strong_count(&in_i32));
 
         assert_eq!("component_a", a.name);
         assert_eq!(1, a.in_ports.len());
