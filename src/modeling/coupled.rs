@@ -1,7 +1,7 @@
-use crate::{Shared, RcHash};
-use super::{AsComponent, AsPort, Component};
-use std::boxed::Box;
+use super::{AsModel, AsPort, Model, Component};
+use crate::{RcHash, Shared};
 use std::collections::{HashMap, HashSet};
+use std::fmt::{Debug, Display, Result, Formatter};
 
 type CouplingsMap = HashMap<RcHash<dyn AsPort>, HashSet<RcHash<dyn AsPort>>>;
 
@@ -9,24 +9,24 @@ type CouplingsMap = HashMap<RcHash<dyn AsPort>, HashSet<RcHash<dyn AsPort>>>;
 #[derive(Debug)]
 pub struct Coupled {
     /// Component wrapped by the coupled model.
-    component: Component,
+    component: Model,
     /// Components set of the DEVS coupled model.
     /// Components are arranged in a [`HashMap`] which keys are the component names.
     /// Thus, component names must be unique.
-    components: HashMap<String, Box<dyn AsComponent>>,
+    pub(crate) components: HashMap<String, Component>,
     /// External input couplings.
-    eic: CouplingsMap,
+    pub(crate) eic: CouplingsMap,
     /// Internal couplings.
-    ic: CouplingsMap,
+    pub(crate) ic: CouplingsMap,
     /// External output couplings.
-    eoc: CouplingsMap,
+    pub(crate) eoc: CouplingsMap,
 }
 
 impl Coupled {
     /// Creates a new coupled DEVS model.
     pub fn new(name: &str) -> Self {
         Self {
-            component: Component::new(name),
+            component: Model::new(name),
             components: HashMap::new(),
             eic: HashMap::new(),
             ic: HashMap::new(),
@@ -34,16 +34,16 @@ impl Coupled {
         }
     }
 
-    fn _add_component<T: 'static + AsComponent>(&mut self, component: T) {
+    fn _add_component<T: 'static + AsModel>(&mut self, component: T) {
         let component_name = component.get_name();
         if self.components.contains_key(component_name) {
             panic!(
                 "coupled model {} already contains component with name {}",
-                self.component.name, component_name
+                self.component, component_name
             )
         }
         self.components
-            .insert(component_name.to_string(), Box::new(component));
+            .insert(component_name.to_string(), AsModel::to_component(component));
     }
 
     /// Returns false if coupling was already defined
@@ -62,7 +62,28 @@ impl Coupled {
     }
 }
 
-pub trait AsCoupled: AsComponent {
+impl Display for Coupled {
+    fn fmt(&self, f: &mut Formatter<'_>) -> Result {
+        write!(f, "{}", self.component.get_name())
+    }
+}
+
+impl AsCoupled for Coupled {
+    fn to_coupled(self) -> Coupled {
+        self
+    }
+
+    fn as_coupled(&self) -> &Coupled {
+        self
+    }
+
+    fn as_coupled_mut(&mut self) -> &mut Coupled {
+        self
+    }
+}
+
+pub trait AsCoupled: AsModel {
+    fn to_coupled(self) -> Coupled;
     /// Method to return a reference to the inner coupled model.
     fn as_coupled(&self) -> &Coupled;
 
@@ -80,7 +101,7 @@ pub trait AsCoupled: AsComponent {
     /// top_coupled.add_component(Coupled::new("component"));
     /// // top_coupled.add_component(Coupled::new("component"));  // this panics (duplicate name)
     /// ```
-    fn add_component<T: AsComponent + 'static>(&mut self, component: T)
+    fn add_component<T: AsModel + 'static>(&mut self, component: T)
     where
         Self: Sized,
     {
@@ -99,8 +120,8 @@ pub trait AsCoupled: AsComponent {
     /// top_coupled.add_component(Coupled::new("component_1"));
     /// assert!(top_coupled.try_get_component("component_1").is_some());
     /// ```
-    fn try_get_component(&self, component_name: &str) -> Option<&dyn AsComponent> {
-        Some(&**self.as_coupled().components.get(component_name)?)
+    fn try_get_component(&self, component_name: &str) -> Option<&Component> {
+        Some(self.as_coupled().components.get(component_name)?)
     }
 
     /// Returns a dynamic reference to a component with the provided name.
@@ -115,7 +136,7 @@ pub trait AsCoupled: AsComponent {
     /// top_coupled.add_component(Coupled::new("component_1"));
     /// let _component = top_coupled.get_component("component_1");
     /// ```
-    fn get_component(&self, component_name: &str) -> &dyn AsComponent {
+    fn get_component(&self, component_name: &str) -> &Component {
         self.try_get_component(component_name).unwrap_or_else(|| {
             panic!(
                 "coupled model {} does not contain component with name {}",
@@ -137,7 +158,7 @@ pub trait AsCoupled: AsComponent {
     ///
     /// # Examples
     /// ```
-    /// use xdevs::modeling::{AsComponent, AsCoupled, Coupled};
+    /// use xdevs::modeling::{AsModel, AsCoupled, Coupled};
     ///
     /// let mut component = Coupled::new("component");
     /// component.add_in_port::<i32>("input");
@@ -149,9 +170,9 @@ pub trait AsCoupled: AsComponent {
     /// // top_coupled.add_eic("input", "component", "input");  // this panics (duplicate coupling)
     /// ```
     fn add_eic(&mut self, port_from_name: &str, component_to_name: &str, port_to_name: &str) {
-        let port_from = self.as_component().get_in_port(port_from_name);
+        let port_from = self.as_model().get_in_port(port_from_name);
         let component = self.get_component(component_to_name);
-        let port_to = component.as_component().get_in_port(port_to_name);
+        let port_to = component.as_model().get_in_port(port_to_name);
         if !Coupled::add_coupling(&mut self.as_coupled_mut().eic, port_from, port_to) {
             panic!(
                 "EIC coupling {}->{}::{} is already defined",
@@ -173,7 +194,7 @@ pub trait AsCoupled: AsComponent {
     ///
     /// # Examples
     /// ```
-    /// use xdevs::modeling::{AsComponent, AsCoupled, Coupled};
+    /// use xdevs::modeling::{AsModel, AsCoupled, Coupled};
     ///
     /// let mut component_1 = Coupled::new("component_1");
     /// component_1.add_out_port::<i32>("output");
@@ -193,10 +214,10 @@ pub trait AsCoupled: AsComponent {
         component_to_name: &str,
         port_to_name: &str,
     ) {
-        let component_from = self.get_component(component_from_name).as_component();
+        let component_from = self.get_component(component_from_name).as_model();
         let port_from = component_from.get_out_port(port_from_name);
         let component_to = self.get_component(component_to_name);
-        let port_to = component_to.as_component().get_in_port(port_to_name);
+        let port_to = component_to.as_model().get_in_port(port_to_name);
         if !Coupled::add_coupling(&mut self.as_coupled_mut().ic, port_from, port_to) {
             panic!(
                 "IC coupling {}::{}->{}::{} is already defined",
@@ -217,7 +238,7 @@ pub trait AsCoupled: AsComponent {
     ///
     /// # Examples
     /// ```
-    /// use xdevs::modeling::{AsComponent, AsCoupled, Coupled};
+    /// use xdevs::modeling::{AsModel, AsCoupled, Coupled};
     ///
     /// let mut component = Coupled::new("component");
     /// component.add_out_port::<i32>("output");
@@ -229,9 +250,9 @@ pub trait AsCoupled: AsComponent {
     /// // top_coupled.add_eoc("component", "output", "output");  // this panics (duplicate coupling)
     /// ```
     fn add_eoc(&mut self, component_from_name: &str, port_from_name: &str, port_to_name: &str) {
-        let component = self.get_component(component_from_name).as_component();
+        let component = self.get_component(component_from_name).as_model();
         let port_from = component.get_out_port(port_from_name);
-        let port_to = self.as_component().get_out_port(port_to_name);
+        let port_to = self.as_model().get_out_port(port_to_name);
         if !Coupled::add_coupling(&mut self.as_coupled_mut().eoc, port_from, port_to) {
             panic!(
                 "EOC coupling <{}::{}->{}> is already defined",
@@ -241,22 +262,16 @@ pub trait AsCoupled: AsComponent {
     }
 }
 
-impl AsCoupled for Coupled {
-    fn as_coupled(&self) -> &Coupled {
-        self
+impl<T: AsCoupled + 'static> AsModel for T {
+    fn to_component(self) -> Component {
+        Component::Coupled(Box::new(self))
     }
 
-    fn as_coupled_mut(&mut self) -> &mut Coupled {
-        self
-    }
-}
-
-impl<T: AsCoupled> AsComponent for T {
-    fn as_component(&self) -> &Component {
+    fn as_model(&self) -> &Model {
         &self.as_coupled().component
     }
 
-    fn as_component_mut(&mut self) -> &mut Component {
+    fn as_model_mut(&mut self) -> &mut Model {
         &mut self.as_coupled_mut().component
     }
 }
@@ -269,6 +284,9 @@ macro_rules! impl_coupled {
     ($($COUPLED:ident),+) => {
         $(
             impl AsCoupled for $COUPLED {
+                fn to_coupled(self) -> Coupled {
+                    self.coupled
+                }
                 fn as_coupled(&self) -> &Coupled {
                     &self.coupled
                 }

@@ -1,7 +1,7 @@
-use super::AsComponent;
+use super::AsModel;
 
 /// Interface for atomic DEVS models.
-pub trait AsAtomic: AsComponent {
+pub trait AsAtomic: AsModel {
     /// Output function of the atomic DEVS model.
     fn lambda(&self);
 
@@ -16,8 +16,8 @@ pub trait AsAtomic: AsComponent {
     fn ta(&self) -> f64;
 
     /// Confluent transition function of the atomic DEVS model.
-    /// By default, it first triggers [`AtomicInterface::delta_int`].
-    /// Then, it triggers [`AtomicInterface::delta_ext`] with elapsed time 0.
+    /// By default, it first triggers [`AsAtomic::delta_int`].
+    /// Then, it triggers [`AsAtomic::delta_ext`] with elapsed time 0.
     fn delta_conf(&mut self) {
         self.delta_int();
         self.delta_ext(0.);
@@ -31,7 +31,7 @@ mod tests {
     #[derive(Debug)]
     struct TestAtomic {
         // We need to have a Component for composition.
-        component: Component,
+        model: Model,
         // We add all the state-related fields.
         n_delta_int: i32,
         n_delta_ext: i32,
@@ -43,14 +43,14 @@ mod tests {
 
     impl TestAtomic {
         fn new(name: &str) -> Self {
-            let mut component = Component::new(name);
+            let mut component = Model::new(name);
             Self {
                 n_delta_ext: 0,
                 n_delta_int: 0,
                 sigma: f64::INFINITY,
                 in_port: component.add_in_port::<i32>("in_port"),
                 out_port: component.add_out_port::<i32>("out_port"),
-                component,
+                model: component,
             }
         }
 
@@ -58,8 +58,7 @@ mod tests {
             self.in_port.add_value(value);
         }
     }
-
-    impl_component!(TestAtomic); // impl_component automatically implements the AsComponent
+    impl_model!(TestAtomic); // impl_component automatically implements the AsComponent
 
     impl AsAtomic for TestAtomic {
         fn lambda(&self) {
@@ -98,7 +97,7 @@ mod tests {
         assert_eq!(0, atomic.n_delta_int);
         assert_eq!(1, atomic.n_delta_ext);
         assert_eq!(0., atomic.sigma);
-        atomic.component.clear_in_ports();
+        atomic.model.clear_in_ports();
 
         atomic.lambda();
         assert_eq!(0, atomic.n_delta_int);
@@ -111,7 +110,7 @@ mod tests {
         assert_eq!(1, atomic.n_delta_int);
         assert_eq!(1, atomic.n_delta_ext);
         assert_eq!(f64::INFINITY, atomic.sigma);
-        atomic.component.clear_out_ports();
+        atomic.model.clear_out_ports();
         assert_eq!(0, atomic.out_port.len());
 
         atomic.add_input_value(0);
@@ -121,7 +120,7 @@ mod tests {
         assert_eq!(1, atomic.n_delta_int);
         assert_eq!(2, atomic.n_delta_ext);
         assert_eq!(3., atomic.sigma);
-        atomic.component.clear_in_ports();
+        atomic.model.clear_in_ports();
 
         atomic.lambda();
         assert_eq!(1, atomic.n_delta_int);
@@ -134,7 +133,7 @@ mod tests {
         assert_eq!(2, atomic.n_delta_int);
         assert_eq!(2, atomic.n_delta_ext);
         assert_eq!(f64::INFINITY, atomic.sigma);
-        atomic.component.clear_out_ports();
+        atomic.model.clear_out_ports();
         assert_eq!(0, atomic.out_port.len());
     }
 }

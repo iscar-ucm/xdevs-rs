@@ -1,3 +1,5 @@
+extern crate core;
+
 pub mod modeling;
 pub mod simulation;
 

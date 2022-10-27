@@ -1,6 +1,6 @@
 use crate::Shared;
 use std::any::{type_name, Any};
-use std::fmt::{Debug, Display, Formatter, Result as FmtResult};
+use std::fmt::{Debug, Display, Formatter, Result};
 use std::ops::{Deref, DerefMut};
 
 #[cfg(not(feature = "parallel"))]
@@ -16,7 +16,7 @@ type Mutable<T> = RwLock<T>;
 /// DEVS port struct.
 #[derive(Clone, Debug)]
 pub struct Port<T> {
-    /// name of the port.
+    /// Name of the port.
     name: String,
     /// Message bag.
     bag: Shared<Mutable<Vec<T>>>,
@@ -100,7 +100,7 @@ impl<T: 'static> Port<T> {
 }
 
 impl<T> Display for Port<T> {
-    fn fmt(&self, f: &mut Formatter<'_>) -> FmtResult {
+    fn fmt(&self, f: &mut Formatter<'_>) -> Result {
         write!(f, "{}<{}>", self.name, type_name::<T>())
     }
 }
