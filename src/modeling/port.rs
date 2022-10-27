@@ -1,4 +1,4 @@
-use super::Shared;
+use crate::Shared;
 use std::any::{type_name, Any};
 use std::fmt::{Debug, Display, Formatter, Result as FmtResult};
 use std::ops::{Deref, DerefMut};

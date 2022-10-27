@@ -1,4 +1,5 @@
-use super::{AsComponent, AsPort, Component, RcHash, Shared};
+use crate::{Shared, RcHash};
+use super::{AsComponent, AsPort, Component};
 use std::boxed::Box;
 use std::collections::{HashMap, HashSet};
 

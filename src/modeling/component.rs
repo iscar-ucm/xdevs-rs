@@ -1,4 +1,5 @@
-use super::{AsPort, Port, Shared};
+use crate::Shared;
+use super::{AsPort, Port};
 use std::collections::HashMap;
 use std::fmt::{Debug, Display, Formatter, Result as FmtResult};
 
