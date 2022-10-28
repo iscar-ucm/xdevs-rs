@@ -41,7 +41,6 @@ impl Generator {
 }
 impl_atomic!(Generator); // TODO issue with private/public stuff
 
-
 #[derive(Debug)]
 struct Processor {
     model: Model,
@@ -119,7 +118,12 @@ impl Transducer {
             println!("generator sent job {} at time {}", job, self.get_time());
         }
         for (job, time) in self.input_p.get_values().iter() {
-            println!("processor processed job {} after {} seconds at time {}", job, time, self.get_time());
+            println!(
+                "processor processed job {} after {} seconds at time {}",
+                job,
+                time,
+                self.get_time()
+            );
         }
     }
     fn ta(&self) -> f64 {
@@ -127,7 +131,6 @@ impl Transducer {
     }
 }
 impl_atomic!(Transducer); // TODO issue with private/public stuff
-
 
 fn main() {
     let period = 3.;

@@ -88,10 +88,7 @@ impl Model {
 
     /// Adds a new input port of type [`Port<T>`] to the component and returns a reference to it.
     /// It panics if there is already an input port with the same name.
-    pub fn add_in_port<T: 'static + Clone + Debug>(
-        &mut self,
-        port_name: &str,
-    ) -> Shared<Port<T>> {
+    pub fn add_in_port<T: 'static + Clone + Debug>(&mut self, port_name: &str) -> Shared<Port<T>> {
         add_port(&mut self.input_map, &mut self.input_vec, port_name).unwrap_or_else(|| {
             panic!(
                 "component {} already contains input port with name {}",
@@ -102,10 +99,7 @@ impl Model {
 
     /// Adds a new output port of type [`Port<T>`] to the component and returns a reference to it.
     /// It panics if there is already an output port with the same name.
-    pub fn add_out_port<T: 'static + Clone + Debug>(
-        &mut self,
-        port_name: &str,
-    ) -> Shared<Port<T>> {
+    pub fn add_out_port<T: 'static + Clone + Debug>(&mut self, port_name: &str) -> Shared<Port<T>> {
         add_port(&mut self.output_map, &mut self.output_vec, port_name).unwrap_or_else(|| {
             panic!(
                 "component {} already contains output port with name {}",
@@ -237,18 +231,6 @@ pub trait AsModel: Debug {
         self.as_model().clock.t_last
     }
 }
-
-/*
-impl<T: AsModel + ?Sized> AsModel for Box<T> {
-    fn as_model(&self) -> &Model {
-        (**self).as_model()
-    }
-
-    fn as_model_mut(&mut self) -> &mut Model {
-        (**self).as_model_mut()
-    }
-}
-*/
 
 #[cfg(test)]
 mod tests {

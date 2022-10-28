@@ -1,5 +1,5 @@
-use std::fmt::Debug;
 use crate::{AsModel, Model};
+use std::fmt::Debug;
 
 impl<T: AsAtomic> AsModel for T {
     fn as_model(&self) -> &Model {

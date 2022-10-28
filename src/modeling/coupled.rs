@@ -1,4 +1,4 @@
-use crate::model::port::AsPort;
+use crate::modeling::port::AsPort;
 use crate::{AsModel, Model, RcHash, Shared};
 use std::collections::{HashMap, HashSet};
 use std::fmt::{Debug, Display, Formatter, Result};
@@ -226,7 +226,9 @@ impl AsModel for Coupled {
     }
 
     fn stop_simulation(&mut self, t_stop: f64) {
-        self.components.values_mut().for_each(|c| c.stop_simulation(t_stop)); // TODO parallel?
+        self.components
+            .values_mut()
+            .for_each(|c| c.stop_simulation(t_stop)); // TODO parallel?
         self.model.set_clock(t_stop, f64::INFINITY);
     }
 
