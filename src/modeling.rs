@@ -17,7 +17,6 @@ pub struct Clock {
 }
 
 impl Clock {
-    /// It creates a new simulator with default values.
     pub fn new() -> Self {
         Self {
             t_last: 0.,
@@ -82,7 +81,8 @@ impl Model {
         &self.name
     }
 
-    pub(crate) fn get_t_next(&self) -> f64 {
+    /// Returns time for the next model transition.
+    pub(crate) fn t_next(&self) -> f64 {
         self.clock.t_next
     }
 
@@ -136,6 +136,7 @@ impl Model {
             .clone()
     }
 
+    /// Clears all the input and output ports of the model.
     fn clear_ports(&mut self) {
         self.input_vec.iter().for_each(|p| p.clear());
         self.output_vec.iter().for_each(|p| p.clear());
@@ -195,7 +196,7 @@ pub trait AsModel: Debug {
     /// It panics if there is already an input port with the same name.
     fn add_in_port<T>(&mut self, port_name: &str) -> Shared<Port<T>>
     where
-        T: 'static + Clone + Debug + Display,
+        T: 'static + Clone + Debug,
         Self: Sized,
     {
         self.as_model_mut().add_in_port(port_name)
@@ -205,7 +206,7 @@ pub trait AsModel: Debug {
     /// It panics if there is already an output port with the same name.
     fn add_out_port<T>(&mut self, port_name: &str) -> Shared<Port<T>>
     where
-        T: 'static + Clone + Debug + Display,
+        T: 'static + Clone + Debug,
         Self: Sized,
     {
         self.as_model_mut().add_out_port(port_name)

@@ -217,7 +217,7 @@ impl AsModel for Coupled {
         let mut t_next = f64::INFINITY;
         for component in self.components.values_mut() {
             component.start_simulation(t_start);
-            let t = component.as_model().get_t_next();
+            let t = component.as_model().t_next();
             if t < t_next {
                 t_next = t;
             }
@@ -234,7 +234,7 @@ impl AsModel for Coupled {
 
     fn lambda(&mut self, t: f64) {
         // TODO parallel?
-        if t >= self.model.get_t_next() {
+        if t >= self.model.t_next() {
             self.components.values_mut().for_each(|c| c.lambda(t));
             for (port_to, ports_from) in self.ic.iter() {
                 ports_from
@@ -259,7 +259,7 @@ impl AsModel for Coupled {
         self.model.clock.t_last = t;
         let mut next_t = f64::INFINITY;
         for component in self.components.values() {
-            let t = component.as_model().get_t_next();
+            let t = component.as_model().t_next();
             if t < next_t {
                 next_t = t;
             }
@@ -270,6 +270,26 @@ impl AsModel for Coupled {
     fn clear_ports(&mut self) {
         self.components.values_mut().for_each(|c| c.clear_ports());
         self.model.clear_ports();
+    }
+}
+
+/// Helper macro to implement the AsModel trait for coupled models.
+/// You can use this macro with any struct containing a field `coupled` of type [`Coupled`].
+/// TODO try to use the derive stuff (it will be more elegant).
+#[macro_export]
+macro_rules! impl_coupled {
+    ($($COUPLED:ident),+) => {
+        $(
+            impl AsModel for $COUPLED {
+                fn as_model(&self) -> &Model { self.coupled.as_model() }
+                fn as_model_mut(&mut self) -> &mut Model { self.coupled.as_model_mut() }
+                fn start_simulation(&mut self, t_start: f64) { self.coupled.start_simulation(t_start); }
+                fn stop_simulation(&mut self, t_stop: f64) { self.coupled.stop_simulation(t_stop); }
+                fn lambda(&mut self, t: f64) { self.coupled.lambda(t); }
+                fn delta(&mut self, t: f64) { self.coupled.delta(t); }
+                fn clear_ports(&mut self) { self.coupled.clear_ports(); }
+            }
+        )+
     }
 }
 

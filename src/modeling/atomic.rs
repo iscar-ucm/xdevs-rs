@@ -20,13 +20,13 @@ impl<T: AsAtomic> AsModel for T {
     }
 
     fn lambda(&mut self, t: f64) {
-        if t >= AsAtomic::as_model(self).get_t_next() {
+        if t >= AsAtomic::as_model(self).t_next() {
             AsAtomic::lambda(self);
         }
     }
 
     fn delta(&mut self, t: f64) {
-        let t_next = AsAtomic::as_model_mut(self).get_t_next();
+        let t_next = AsAtomic::as_model_mut(self).t_next();
         if !self.is_input_empty() {
             if t == t_next {
                 self.delta_conf();
@@ -72,9 +72,10 @@ pub trait AsAtomic: Debug {
     }
 }
 
-/// Helper macro to implement the AsModel trait.
+/// Helper macro to implement the AsAtomic trait.
 /// You can use this macro with any struct containing a field `model` of type [`Model`].
 /// TODO try to use the derive stuff (it will be more elegant).
+/// TODO better documentation!
 #[macro_export]
 macro_rules! impl_atomic {
     ($($ATOMIC:ident),+) => {

@@ -132,23 +132,77 @@ impl Transducer {
 }
 impl_atomic!(Transducer); // TODO issue with private/public stuff
 
-fn main() {
-    let period = 3.;
-    let time = 1.;
-    let observation = 50.;
+#[derive(Debug)]
+struct ExperimentalFrame {
+    coupled: Coupled,
+    _input: Shared<Port<(usize, f64)>>,
+    _output: Shared<Port<usize>>,
+}
+impl ExperimentalFrame {
+    fn new(name: &str, period: f64, observation: f64) -> Self {
+        let mut coupled = Coupled::new(name);
+        let _input = coupled.add_in_port::<(usize, f64)>("input");
+        let _output = coupled.add_out_port::<usize>("output");
+
+        let generator = Generator::new("generator", period);
+        let transducer = Transducer::new("transducer", observation);
+
+        coupled.add_component(generator);
+        coupled.add_component(transducer);
+
+        coupled.add_eic("input", "transducer", "input_p");
+        coupled.add_ic("generator", "output", "transducer", "input_g");
+        coupled.add_ic("transducer", "output", "generator", "input");
+        coupled.add_eoc("generator", "output", "output");
+
+        Self {
+            coupled,
+            _input,
+            _output,
+        }
+    }
+}
+impl_coupled!(ExperimentalFrame);
+
+fn create_gpt(period: f64, time: f64, observation: f64) -> Coupled {
     let generator = Generator::new("generator", period);
     let processor = Processor::new("processor", time);
     let transducer = Transducer::new("transducer", observation);
 
-    let mut coupled = Coupled::new("gpt");
-    coupled.add_component(generator);
-    coupled.add_component(processor);
-    coupled.add_component(transducer);
+    let mut gpt = Coupled::new("gpt");
+    gpt.add_component(generator);
+    gpt.add_component(processor);
+    gpt.add_component(transducer);
 
-    coupled.add_ic("generator", "output", "processor", "input");
-    coupled.add_ic("generator", "output", "transducer", "input_g");
-    coupled.add_ic("processor", "output", "transducer", "input_p");
-    coupled.add_ic("transducer", "output", "generator", "input");
+    gpt.add_ic("generator", "output", "processor", "input");
+    gpt.add_ic("generator", "output", "transducer", "input_g");
+    gpt.add_ic("processor", "output", "transducer", "input_p");
+    gpt.add_ic("transducer", "output", "generator", "input");
+
+    gpt
+}
+
+fn create_efp(period: f64, time: f64, observation: f64) -> Coupled {
+    let mut efp = Coupled::new("efp");
+
+    let ef = ExperimentalFrame::new("ef", period, observation);
+    let processor = Processor::new("processor", time);
+
+    efp.add_component(ef);
+    efp.add_component(processor);
+
+    efp.add_ic("ef", "output", "processor", "input");
+    efp.add_ic("processor", "output", "ef", "input");
+    efp
+}
+
+fn main() {
+    let period = 3.;
+    let time = 1.;
+    let observation = 50.;
+
+    // let coupled = create_gpt(period, time, observation);
+    let coupled = create_efp(period, time, observation);
 
     let mut simulator = RootCoordinator::new(coupled);
     simulator.simulate_time(f64::INFINITY)
