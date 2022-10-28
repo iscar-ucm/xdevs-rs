@@ -1,4 +1,4 @@
-use super::AsModel;
+use crate::AsModel;
 
 /// Interface for atomic DEVS models.
 pub trait AsAtomic: AsModel {
@@ -24,9 +24,79 @@ pub trait AsAtomic: AsModel {
     }
 }
 
+/// Helper macro to implement the AsModel trait.
+/// You can use this macro with any struct containing a field `model` of type [`Model`].
+/// TODO try to use the derive stuff (it will be more elegant).
+#[macro_export]
+macro_rules! impl_atomic {
+    ($($ATOMIC:ident),+) => {
+        // use $crate::{AbstractSimulator, AsAtomic, AsModel};
+        $(
+            impl AsModel for $ATOMIC {
+                fn as_model(&self) -> &Model { &self.model }
+                fn as_model_mut(&mut self) -> &mut Model { &mut self.model }
+            }
+            impl AsAtomic for $ATOMIC {
+                fn lambda(&self) { self.lambda(); }
+                fn delta_int(&mut self) { self.delta_int() }
+                fn delta_ext(&mut self, e: f64) { self. delta_ext(e) }
+                fn ta(&self) -> f64 { self.ta() }
+            }
+            impl AbstractSimulator for $ATOMIC {
+                fn start(&mut self, t_start: f64) {
+                    self.as_model_mut().reset_simulator(t_start);
+                    self.as_model_mut().simulator.t_next = t_start + self.ta()
+                }
+
+                fn stop(&mut self, t_stop: f64) {
+                    self.as_model_mut().reset_simulator(t_stop);
+                }
+
+                fn t_last(&self) -> f64 {
+                    self.as_model().simulator.t_last
+                }
+
+                fn t_next(&self) -> f64 {
+                    self.as_model().simulator.t_next
+                }
+
+                fn collection(&mut self, t: f64) {
+                    if t >= self.t_next() {
+                        self.lambda();
+                    }
+                }
+
+                fn transition(&mut self, t: f64) {
+                    if !self.is_input_empty() {
+                        if t == self.t_next() {
+                            self.delta_conf();
+                        } else {
+                            let e = t - self.t_last();
+                            self.delta_ext(e);
+                        }
+                    } else if t == self.t_next() {
+                        self.delta_int();
+                    } else {
+                        return;
+                    }
+                    let ta = self.ta();
+                    let simulator = &mut self.as_model_mut().simulator;
+                    simulator.t_last = t;
+                    simulator.t_next = t + ta;
+                }
+
+                fn clear(&mut self) {
+                    self.clear_in_ports();
+                    self.clear_out_ports();
+                }
+            }
+        )+
+    }
+}
+
 #[cfg(test)]
 mod tests {
-    use crate::modeling::*;
+    use crate::*;
 
     #[derive(Debug)]
     struct TestAtomic {
@@ -37,8 +107,8 @@ mod tests {
         n_delta_ext: i32,
         sigma: f64,
         // We add all the in/out ports of the model.
-        in_port: Port<i32>,
-        out_port: Port<i32>,
+        in_port: Shared<Port<i32>>,
+        out_port: Shared<Port<i32>>,
     }
 
     impl TestAtomic {
@@ -57,10 +127,7 @@ mod tests {
         fn add_input_value(&self, value: i32) {
             self.in_port.add_value(value);
         }
-    }
-    impl_model!(TestAtomic); // impl_component automatically implements the AsComponent
 
-    impl AsAtomic for TestAtomic {
         fn lambda(&self) {
             self.out_port.add_value(self.n_delta_ext + self.n_delta_int);
         }
@@ -84,6 +151,7 @@ mod tests {
             self.sigma
         }
     }
+    impl_atomic!(TestAtomic); // it automatically implements the AsModel and AsAtomic traits
 
     #[test]
     fn test_component() {
@@ -97,7 +165,7 @@ mod tests {
         assert_eq!(0, atomic.n_delta_int);
         assert_eq!(1, atomic.n_delta_ext);
         assert_eq!(0., atomic.sigma);
-        atomic.model.clear_in_ports();
+        atomic.clear_in_ports();
 
         atomic.lambda();
         assert_eq!(0, atomic.n_delta_int);
@@ -110,7 +178,7 @@ mod tests {
         assert_eq!(1, atomic.n_delta_int);
         assert_eq!(1, atomic.n_delta_ext);
         assert_eq!(f64::INFINITY, atomic.sigma);
-        atomic.model.clear_out_ports();
+        atomic.clear_out_ports();
         assert_eq!(0, atomic.out_port.len());
 
         atomic.add_input_value(0);
@@ -120,7 +188,7 @@ mod tests {
         assert_eq!(1, atomic.n_delta_int);
         assert_eq!(2, atomic.n_delta_ext);
         assert_eq!(3., atomic.sigma);
-        atomic.model.clear_in_ports();
+        atomic.clear_in_ports();
 
         atomic.lambda();
         assert_eq!(1, atomic.n_delta_int);
@@ -133,7 +201,7 @@ mod tests {
         assert_eq!(2, atomic.n_delta_int);
         assert_eq!(2, atomic.n_delta_ext);
         assert_eq!(f64::INFINITY, atomic.sigma);
-        atomic.model.clear_out_ports();
+        atomic.clear_out_ports();
         assert_eq!(0, atomic.out_port.len());
     }
 }

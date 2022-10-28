@@ -1,25 +1,15 @@
-use crate::Shared;
+use crate::Mutable;
 use std::any::{type_name, Any};
 use std::fmt::{Debug, Display, Formatter, Result};
 use std::ops::{Deref, DerefMut};
 
-#[cfg(not(feature = "parallel"))]
-use std::cell::RefCell;
-#[cfg(feature = "parallel")]
-use std::sync::RwLock;
-
-#[cfg(not(feature = "parallel"))]
-type Mutable<T> = RefCell<T>;
-#[cfg(feature = "parallel")]
-type Mutable<T> = RwLock<T>;
-
 /// DEVS port struct.
-#[derive(Clone, Debug)]
+#[derive(Debug)]
 pub struct Port<T> {
     /// Name of the port.
     name: String,
     /// Message bag.
-    bag: Shared<Mutable<Vec<T>>>,
+    bag: Mutable<Vec<T>>,
 }
 
 impl<T> Port<T> {
@@ -27,7 +17,7 @@ impl<T> Port<T> {
     pub fn new(name: &str) -> Self {
         Self {
             name: name.to_string(),
-            bag: Shared::new(Mutable::new(Vec::new())),
+            bag: Mutable::new(Vec::new()),
         }
     }
 
