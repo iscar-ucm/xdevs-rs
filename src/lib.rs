@@ -2,11 +2,10 @@ pub mod model;
 pub mod sim;
 
 pub use model::atomic::AsAtomic;
-pub use model::coupled::{AsCoupled, Coupled};
+pub use model::coupled::Coupled;
 pub use model::port::Port;
 pub use model::{AsModel, Model};
-pub use sim::{AbstractSimulator, Simulator};
-pub use sim::root_coordinator::RootCoordinator;
+pub use sim::{Clock, RootCoordinator};
 
 use std::fmt::{Display, Formatter, Result};
 use std::hash::{Hash, Hasher};

@@ -1,15 +1,15 @@
-pub mod root_coordinator;
+use crate::AsModel;
 
 /// Basic simulator struct. All models have one of these inside to keep track of time.
 #[derive(Clone, Debug)]
-pub struct Simulator {
+pub struct Clock {
     /// Time for the latest model state transition.
     pub t_last: f64,
     /// Time for the next model state transition.
     pub t_next: f64,
 }
 
-impl Simulator {
+impl Clock {
     /// It creates a new simulator with default values.
     pub fn new() -> Self {
         Self {
@@ -19,57 +19,29 @@ impl Simulator {
     }
 }
 
-impl Default for Simulator {
+impl Default for Clock {
     fn default() -> Self {
         Self::new()
     }
 }
 
-/// Models must implement this trait in order to be simulated.
-pub trait AbstractSimulator {
-    /// It starts the simulation, setting the initial time to t_start.
-    fn start(&mut self, t_start: f64);
-    /// It stops the simulation, setting the last time to t_stop.
-    fn stop(&mut self, t_stop: f64);
-    /// It returns the time of the latest model state transition.
-    fn t_last(&self) -> f64;
-    /// It returns the time of the next model state transition.
-    fn t_next(&self) -> f64;
-    /// Executes output functions and propagates messages according to ICs and EOCs.
-    fn collection(&mut self, t: f64);
-    /// Propagates messages according to EICs and executes model transition functions.
-    fn transition(&mut self, t: f64);
-    /// Removes all the messages from all the ports.
-    fn clear(&mut self);
+pub struct RootCoordinator<T> {
+    model: T
 }
 
-/// Blanket implementation of AbstractSimulator for boxed AbstractSimulator trait objects.
-impl<T: AbstractSimulator + ?Sized> AbstractSimulator for Box<T> {
-    fn start(&mut self, t_start: f64) {
-        (**self).start(t_start);
+impl<T: AsModel> RootCoordinator<T> {
+    pub fn new(model: T) -> Self {
+        Self {model}
     }
 
-    fn stop(&mut self, t_stop: f64) {
-        (**self).stop(t_stop);
-    }
-
-    fn t_last(&self) -> f64 {
-        (**self).t_last()
-    }
-
-    fn t_next(&self) -> f64 {
-        (**self).t_next()
-    }
-
-    fn collection(&mut self, t: f64) {
-        (**self).collection(t);
-    }
-
-    fn transition(&mut self, t: f64) {
-        (**self).transition(t);
-    }
-
-    fn clear(&mut self) {
-        (**self).clear();
+    pub fn simulate_time(&mut self, t_end: f64) {
+        self.model.start_simulation(0.);
+        let mut t_next = self.model.get_t_next();
+        while t_next < t_end {
+            self.model.lambda(t_next);
+            self.model.delta(t_next);
+            self.model.clear_ports();
+            t_next = self.model.get_t_next();
+        }
     }
 }

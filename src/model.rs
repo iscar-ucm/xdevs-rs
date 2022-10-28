@@ -2,7 +2,7 @@ pub mod atomic;
 pub mod coupled;
 pub mod port;
 
-use crate::{AbstractSimulator, Shared, Simulator};
+use crate::{Shared, Clock};
 use port::{AsPort, Port};
 use std::collections::HashMap;
 use std::fmt::{Debug, Display, Formatter, Result};
@@ -21,7 +21,7 @@ pub struct Model {
     /// Output port set of the DEVS component (serialized for better performance).
     output_vec: Vec<Shared<dyn AsPort>>,
     /// Simulation-related stuff.
-    pub simulator: Simulator,
+    clock: Clock,
 }
 
 /// Helper function to add a port to a component regardless of whether it is input or output.
@@ -48,7 +48,7 @@ impl Model {
             output_map: HashMap::new(),
             input_vec: Vec::new(),
             output_vec: Vec::new(),
-            simulator: Simulator::new(),
+            clock: Clock::new(),
         }
     }
 
@@ -113,14 +113,9 @@ impl Model {
             .clone()
     }
 
-    /// Clears all the input ports of the model.
-    fn clear_in_ports(&mut self) {
-        self.input_vec.iter().for_each(|p| p.clear())
-    }
-
-    /// Clears all the output ports of the model.
-    fn clear_out_ports(&mut self) {
-        self.output_vec.iter().for_each(|p| p.clear())
+    fn clear_ports(&mut self) {
+        self.input_vec.iter().for_each(|p| p.clear());
+        self.output_vec.iter().for_each(|p| p.clear());
     }
 
     /// Returns true if all the input ports of the model are empty.
@@ -133,10 +128,10 @@ impl Model {
         self.output_vec.iter().all(|p| p.is_empty())
     }
 
-    /// Creates a new simulator, overriding the previous one (if any).
-    pub fn reset_simulator(&mut self, t_start: f64) {
-        self.simulator.t_last = t_start;
-        self.simulator.t_next = f64::INFINITY;
+    /// Sets last and next times for the internal clock.
+    fn set_clock(&mut self, t_last: f64, t_next: f64) {
+        self.clock.t_last = t_last;
+        self.clock.t_next = t_next;
     }
 }
 
@@ -147,7 +142,7 @@ impl Display for Model {
 }
 
 /// Interface for DEVS components.
-pub trait AsModel: Debug + AbstractSimulator {
+pub trait AsModel: Debug {
     /// All the DEVS component must own a [`Model`] struct.
     /// This method returns a reference to this inner [`Model`].
     fn as_model(&self) -> &Model;
@@ -156,9 +151,26 @@ pub trait AsModel: Debug + AbstractSimulator {
     /// This method returns a mutable reference to this inner [`Model`].
     fn as_model_mut(&mut self) -> &mut Model;
 
+    /// It starts the simulation, setting the initial time to t_start.
+    fn start_simulation(&mut self, t_start: f64);
+
+    /// It stops the simulation, setting the last time to t_stop.
+    fn stop_simulation(&mut self, t_stop: f64);
+
+    /// Executes output functions and propagates messages according to ICs and EOCs.
+    fn lambda(&mut self, t: f64);
+
+    /// Propagates messages according to EICs and executes model transition functions.
+    fn delta(&mut self, t: f64);
+
     /// Returns the name of the component.
     fn get_name(&self) -> &str {
         self.as_model().get_name()
+    }
+
+    /// Returns reference to simulation clock.
+    fn get_clock(&self) -> &Clock {
+        &self.as_model().clock
     }
 
     /// Adds a new input port of type [`Port<T>`] to the component and returns a reference to it.
@@ -181,16 +193,6 @@ pub trait AsModel: Debug + AbstractSimulator {
         self.as_model_mut().add_out_port(port_name)
     }
 
-    /// Clears all the input ports of the model.
-    fn clear_in_ports(&mut self) {
-        self.as_model_mut().clear_in_ports();
-    }
-
-    /// Clears all the output ports of the model.
-    fn clear_out_ports(&mut self) {
-        self.as_model_mut().clear_out_ports();
-    }
-
     /// Returns true if all the input ports of the model are empty.
     fn is_input_empty(&self) -> bool {
         self.as_model().is_input_empty()
@@ -200,8 +202,30 @@ pub trait AsModel: Debug + AbstractSimulator {
     fn is_output_empty(&self) -> bool {
         self.as_model().is_output_empty()
     }
+
+    /// Removes all the messages from all the ports.
+    fn clear_ports(&mut self) {
+        self.as_model_mut().clear_ports();
+    }
+
+    fn set_clock(&mut self, t_last: f64, t_next: f64) {
+        let clock = &mut self.as_model_mut().clock;
+        clock.t_last = t_last;
+        clock.t_next = t_next;
+    }
+
+    /// It returns the time of the latest model state transition.
+    fn get_t_last(&self) -> f64 {
+        self.as_model().clock.t_last
+    }
+
+    /// It returns the time of the next model state transition.
+    fn get_t_next(&self) -> f64 {
+        self.as_model().clock.t_next
+    }
 }
 
+/*
 impl<T: AsModel + ?Sized> AsModel for Box<T> {
     fn as_model(&self) -> &Model {
         (**self).as_model()
@@ -211,6 +235,7 @@ impl<T: AsModel + ?Sized> AsModel for Box<T> {
         (**self).as_model_mut()
     }
 }
+*/
 
 #[cfg(test)]
 mod tests {
@@ -270,7 +295,7 @@ mod tests {
             assert!(!port_dyn_ref.is_empty());
         }
 
-        a.clear_out_ports();
+        a.clear_ports();
         assert!(a.is_input_empty());
         assert!(a.is_output_empty());
 
@@ -282,7 +307,7 @@ mod tests {
             assert!(!port_dyn_ref.is_empty());
         }
 
-        a.clear_in_ports();
+        a.clear_ports();
         assert!(a.is_input_empty());
         assert!(a.is_output_empty());
     }

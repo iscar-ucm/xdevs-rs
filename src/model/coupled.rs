@@ -1,5 +1,5 @@
 use crate::model::port::AsPort;
-use crate::{AbstractSimulator, AsModel, Model, RcHash, Shared};
+use crate::{AsModel, Model, RcHash, Shared};
 use std::collections::{HashMap, HashSet};
 use std::fmt::{Debug, Display, Formatter, Result};
 
@@ -72,7 +72,7 @@ impl Coupled {
 
     /// Returns a dynamic reference to a component with the provided name.
     /// If the coupled model does not contain any model with that name, it panics.
-    fn get_component(&self, component_name: &str) -> &dyn AsModel {
+    fn get_component(&self, component_name: &str) -> &Box<dyn AsModel> {
         self.components.get(component_name).unwrap_or_else(|| {
             panic!(
                 "coupled model {} does not contain component with name {}",
@@ -204,37 +204,36 @@ impl Display for Coupled {
     }
 }
 
-impl AbstractSimulator for Coupled {
-    fn start(&mut self, t_start: f64) {
-        self.model.reset_simulator(t_start);
+impl AsModel for Coupled {
+    fn as_model(&self) -> &Model {
+        &self.model
+    }
+
+    fn as_model_mut(&mut self) -> &mut Model {
+        &mut self.model
+    }
+
+    fn start_simulation(&mut self, t_start: f64) {
         let mut t_next = f64::INFINITY;
         for component in self.components.values_mut() {
-            component.start(t_start);
-            let t = component.t_next();
+            component.start_simulation(t_start);
+            let t = component.get_t_next();
             if t < t_next {
                 t_next = t;
             }
         }
-        self.model.simulator.t_next = t_next;
+        self.model.set_clock(t_start, t_next);
     }
 
-    fn stop(&mut self, t_stop: f64) {
-        self.components.values_mut().for_each(|c| c.stop(t_stop)); // TODO parallel?
-        self.model.reset_simulator(t_stop);
+    fn stop_simulation(&mut self, t_stop: f64) {
+        self.components.values_mut().for_each(|c| c.stop_simulation(t_stop)); // TODO parallel?
+        self.model.set_clock(t_stop, f64::INFINITY);
     }
 
-    fn t_last(&self) -> f64 {
-        self.model.simulator.t_last
-    }
-
-    fn t_next(&self) -> f64 {
-        self.model.simulator.t_next
-    }
-
-    fn collection(&mut self, t: f64) {
+    fn lambda(&mut self, t: f64) {
         // TODO parallel?
-        if t >= self.t_next() {
-            self.components.values_mut().for_each(|c| c.collection(t));
+        if t >= self.get_t_next() {
+            self.components.values_mut().for_each(|c| c.lambda(t));
             for (port_to, ports_from) in self.ic.iter() {
                 ports_from
                     .iter()
@@ -248,41 +247,31 @@ impl AbstractSimulator for Coupled {
         }
     }
 
-    fn transition(&mut self, t: f64) {
+    fn delta(&mut self, t: f64) {
         for (port_to, ports_from) in self.eic.iter() {
             ports_from
                 .iter()
                 .for_each(|port_from| port_to.propagate(&**port_from))
         }
-        self.components.values_mut().for_each(|c| c.transition(t));
-        self.model.simulator.t_last = t;
+        self.components.values_mut().for_each(|c| c.delta(t));
+        self.model.clock.t_last = t;
         let mut next_t = f64::INFINITY;
         for component in self.components.values() {
-            let t = component.t_next();
+            let t = component.get_t_next();
             if t < next_t {
                 next_t = t;
             }
         }
-        self.model.simulator.t_next = next_t;
+        self.model.clock.t_next = next_t;
     }
 
-    fn clear(&mut self) {
-        self.components.values_mut().for_each(|c| c.clear());
-        self.clear_in_ports();
-        self.clear_out_ports();
-    }
-}
-
-impl AsModel for Coupled {
-    fn as_model(&self) -> &Model {
-        &self.model
-    }
-
-    fn as_model_mut(&mut self) -> &mut Model {
-        &mut self.model
+    fn clear_ports(&mut self) {
+        self.components.values_mut().for_each(|c| c.clear_ports());
+        self.model.clear_ports();
     }
 }
 
+/*
 pub trait AsCoupled: AsModel {
     /// Method to return a reference to the inner coupled model.
     fn as_coupled(&self) -> &Coupled;
@@ -333,6 +322,7 @@ pub trait AsCoupled: AsModel {
             .add_eoc(component_from_name, port_from_name, port_to_name);
     }
 }
+*/
 
 /// Helper macro to implement the AsCoupled trait.
 /// You can use this macro with any struct containing a field `coupled` of type [`Coupled`].
