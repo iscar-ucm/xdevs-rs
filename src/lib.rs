@@ -1,18 +1,18 @@
 pub mod model;
-pub mod sim;
+pub mod simulator;
 
 pub use model::atomic::AsAtomic;
 pub use model::coupled::Coupled;
 pub use model::port::Port;
-pub use model::{AsModel, Model};
-pub use sim::{Clock, RootCoordinator};
+pub use model::{AsModel, Clock, Model};
+pub use simulator::RootCoordinator;
 
 use std::fmt::{Display, Formatter, Result};
 use std::hash::{Hash, Hasher};
+use std::ops::Deref;
 
 #[cfg(not(feature = "parallel"))]
 use std::cell::RefCell;
-use std::ops::Deref;
 #[cfg(not(feature = "parallel"))]
 use std::rc::Rc;
 #[cfg(feature = "parallel")]

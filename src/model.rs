@@ -2,10 +2,35 @@ pub mod atomic;
 pub mod coupled;
 pub mod port;
 
-use crate::{Shared, Clock};
+use crate::Shared;
 use port::{AsPort, Port};
 use std::collections::HashMap;
 use std::fmt::{Debug, Display, Formatter, Result};
+
+/// Basic simulation clock. All models have one of these inside to keep track of time.
+#[derive(Clone, Debug)]
+pub struct Clock {
+    /// Time for the latest model state transition.
+    pub t_last: f64,
+    /// Time for the next model state transition.
+    pub t_next: f64,
+}
+
+impl Clock {
+    /// It creates a new simulator with default values.
+    pub fn new() -> Self {
+        Self {
+            t_last: 0.,
+            t_next: f64::INFINITY,
+        }
+    }
+}
+
+impl Default for Clock {
+    fn default() -> Self {
+        Self::new()
+    }
+}
 
 /// Generic DEVS model.
 #[derive(Debug)]
