@@ -82,6 +82,10 @@ impl Model {
         &self.name
     }
 
+    pub(crate) fn get_t_next(&self) -> f64 {
+        self.clock.t_next
+    }
+
     /// Adds a new input port of type [`Port<T>`] to the component and returns a reference to it.
     /// It panics if there is already an input port with the same name.
     pub fn add_in_port<T: 'static + Clone + Debug>(
@@ -193,11 +197,6 @@ pub trait AsModel: Debug {
         self.as_model().get_name()
     }
 
-    /// Returns reference to simulation clock.
-    fn get_clock(&self) -> &Clock {
-        &self.as_model().clock
-    }
-
     /// Adds a new input port of type [`Port<T>`] to the component and returns a reference to it.
     /// It panics if there is already an input port with the same name.
     fn add_in_port<T>(&mut self, port_name: &str) -> Shared<Port<T>>
@@ -233,20 +232,9 @@ pub trait AsModel: Debug {
         self.as_model_mut().clear_ports();
     }
 
-    fn set_clock(&mut self, t_last: f64, t_next: f64) {
-        let clock = &mut self.as_model_mut().clock;
-        clock.t_last = t_last;
-        clock.t_next = t_next;
-    }
-
     /// It returns the time of the latest model state transition.
-    fn get_t_last(&self) -> f64 {
+    fn get_time(&self) -> f64 {
         self.as_model().clock.t_last
-    }
-
-    /// It returns the time of the next model state transition.
-    fn get_t_next(&self) -> f64 {
-        self.as_model().clock.t_next
     }
 }
 

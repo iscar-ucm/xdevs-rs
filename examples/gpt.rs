@@ -116,10 +116,10 @@ impl Transducer {
     fn delta_ext(&mut self, e: f64) {
         self.sigma -= e;
         for job in self.input_g.get_values().iter() {
-            println!("generator sent job {} at time {}", job, self.get_t_last()); // TODO
+            println!("generator sent job {} at time {}", job, self.get_time());
         }
         for (job, time) in self.input_p.get_values().iter() {
-            println!("processor processed job {} after {} seconds at time {}", job, time, self.get_t_last()); // TODO
+            println!("processor processed job {} after {} seconds at time {}", job, time, self.get_time());
         }
     }
     fn ta(&self) -> f64 {

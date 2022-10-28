@@ -217,7 +217,7 @@ impl AsModel for Coupled {
         let mut t_next = f64::INFINITY;
         for component in self.components.values_mut() {
             component.start_simulation(t_start);
-            let t = component.get_t_next();
+            let t = component.as_model().get_t_next();
             if t < t_next {
                 t_next = t;
             }
@@ -232,7 +232,7 @@ impl AsModel for Coupled {
 
     fn lambda(&mut self, t: f64) {
         // TODO parallel?
-        if t >= self.get_t_next() {
+        if t >= self.model.get_t_next() {
             self.components.values_mut().for_each(|c| c.lambda(t));
             for (port_to, ports_from) in self.ic.iter() {
                 ports_from
@@ -257,7 +257,7 @@ impl AsModel for Coupled {
         self.model.clock.t_last = t;
         let mut next_t = f64::INFINITY;
         for component in self.components.values() {
-            let t = component.get_t_next();
+            let t = component.as_model().get_t_next();
             if t < next_t {
                 next_t = t;
             }
@@ -270,89 +270,6 @@ impl AsModel for Coupled {
         self.model.clear_ports();
     }
 }
-
-/*
-pub trait AsCoupled: AsModel {
-    /// Method to return a reference to the inner coupled model.
-    fn as_coupled(&self) -> &Coupled;
-
-    /// Method to return a mutable reference to the inner coupled model.
-    fn as_coupled_mut(&mut self) -> &mut Coupled;
-
-    /// Adds a new component to the coupled model.
-    /// If there is already a component with the same name as the new component, it panics.
-    fn add_component<T: AsModel + 'static>(&mut self, component: T)
-    where
-        Self: Sized,
-    {
-        self.as_coupled_mut().add_component(component);
-    }
-
-    /// Returns a dynamic reference to a component with the provided name.
-    /// If the coupled model does not contain any model with that name, it panics.
-    fn get_component(&self, component_name: &str) -> &dyn AsModel {
-        self.as_coupled().get_component(component_name)
-    }
-
-    /// Adds a new EIC to the model.
-    fn add_eic(&mut self, port_from_name: &str, component_to_name: &str, port_to_name: &str) {
-        self.as_coupled_mut()
-            .add_eic(port_from_name, component_to_name, port_to_name);
-    }
-
-    /// Adds a new IC to the model.
-    fn add_ic(
-        &mut self,
-        component_from_name: &str,
-        port_from_name: &str,
-        component_to_name: &str,
-        port_to_name: &str,
-    ) {
-        self.as_coupled_mut().add_ic(
-            component_from_name,
-            port_from_name,
-            component_to_name,
-            port_to_name,
-        );
-    }
-
-    /// Adds a new EOC to the model.
-    fn add_eoc(&mut self, component_from_name: &str, port_from_name: &str, port_to_name: &str) {
-        self.as_coupled_mut()
-            .add_eoc(component_from_name, port_from_name, port_to_name);
-    }
-}
-*/
-
-/// Helper macro to implement the AsCoupled trait.
-/// You can use this macro with any struct containing a field `coupled` of type [`Coupled`].
-/// TODO try to use the derive stuff (it will be more elegant).
-#[macro_export]
-macro_rules! impl_coupled {
-    ($($COUPLED:ident),+) => {
-        use $crate::{AsModel, AsCoupled, AbstractSimulator};
-        $(
-            impl AsModel for $COUPLED {
-                fn as_model(&self) -> &Model { self.coupled.as_model() }
-                fn as_model_mut(&mut self) -> &mut Model { self.coupled.as_model_mut() }
-            }
-            impl AsCoupled for $COUPLED {
-                fn as_coupled(&self) -> &Coupled { &self.coupled }
-                fn as_coupled_mut(&mut self) -> &mut Coupled { &mut self.coupled }
-            }
-            impl AbstractSimulator for $COUPLED {
-                fn start(&mut self, t_start: f64) { self.coupled.start(t_start); }
-                fn stop(&mut self, t_stop: f64) { self.coupled.stop(t_stop); }
-                fn t_last(&self) -> f64 { self.coupled.t_last() }
-                fn t_next(&self) -> f64 { self.coupled.t_next() }
-                fn collection(&mut self, t: f64) { self.coupled.collection(t); }
-                fn transition(&mut self, t: f64) { self.coupled.transition(t); }
-                fn clear(&mut self) { self.coupled.clear(); }
-            }
-        )+
-    }
-}
-pub use impl_coupled;
 
 #[cfg(test)]
 mod tests {

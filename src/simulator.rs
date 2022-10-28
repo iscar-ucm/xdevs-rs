@@ -24,12 +24,12 @@ impl<T: AsModel> RootCoordinator<T> {
 
     pub fn simulate_time(&mut self, t_end: f64) {
         self.start_simulation(0.);
-        let mut t_next = self.get_t_next();
+        let mut t_next = self.as_model().get_t_next();
         while t_next < t_end {
             self.lambda(t_next);
             self.delta(t_next);
             self.clear_ports();
-            t_next = self.get_t_next();
+            t_next = self.as_model().get_t_next();
         }
     }
 }

@@ -11,33 +11,35 @@ impl<T: AsAtomic> AsModel for T {
     }
 
     fn start_simulation(&mut self, t_start: f64) {
-        self.set_clock(t_start, t_start + self.ta());
+        let ta = self.ta();
+        self.get_model_mut().set_clock(t_start, t_start + ta);
     }
 
     fn stop_simulation(&mut self, t_stop: f64) {
-        self.set_clock(t_stop, f64::INFINITY);
+        self.get_model_mut().set_clock(t_stop, f64::INFINITY);
     }
 
     fn lambda(&mut self, t: f64) {
-        if t >= self.get_t_next() {
+        if t >= self.get_model().clock.t_next {
             AsAtomic::lambda(self);
         }
     }
 
     fn delta(&mut self, t: f64) {
         if !self.is_input_empty() {
-            if t == self.get_t_next() {
+            if t == self.get_model().clock.t_next {
                 self.delta_conf();
             } else {
-                let e = t - self.get_t_last();
+                let e = t - self.get_model().clock.t_last;
                 self.delta_ext(e);
             }
-        } else if t == self.get_t_next() {
+        } else if t == self.get_model().clock.t_next {
             self.delta_int();
         } else {
             return;
         }
-        self.set_clock(t, t + self.ta())
+        let ta = self.ta();
+        self.get_model_mut().set_clock(t, t + ta)
     }
 }
 
