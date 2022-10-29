@@ -2,7 +2,7 @@ use xdevs::*;
 
 #[derive(Debug)]
 struct Generator {
-    model: Model,
+    component: Component,
     sigma: f64,
     period: f64,
     count: usize,
@@ -11,14 +11,14 @@ struct Generator {
 }
 impl Generator {
     fn new(name: &str, period: f64) -> Self {
-        let mut component = Model::new(name);
+        let mut component = Component::new(name);
         Self {
             sigma: 0.,
             period,
             count: 0,
             input: component.add_in_port::<bool>("input"),
             output: component.add_out_port::<usize>("output"),
-            model: component,
+            component: component,
         }
     }
     fn lambda(&self) {
@@ -43,7 +43,7 @@ impl_atomic!(Generator); // TODO issue with private/public stuff
 
 #[derive(Debug)]
 struct Processor {
-    model: Model,
+    component: Component,
     sigma: f64,
     time: f64,
     job: Option<usize>,
@@ -52,14 +52,14 @@ struct Processor {
 }
 impl Processor {
     fn new(name: &str, time: f64) -> Self {
-        let mut component = Model::new(name);
+        let mut component = Component::new(name);
         Self {
             sigma: f64::INFINITY,
             time,
             job: None,
             input: component.add_in_port::<usize>("input"),
             output: component.add_out_port::<(usize, f64)>("output"),
-            model: component,
+            component: component,
         }
     }
     fn lambda(&self) {
@@ -87,7 +87,7 @@ impl_atomic!(Processor); // TODO issue with private/public stuff
 
 #[derive(Debug)]
 struct Transducer {
-    model: Model,
+    component: Component,
     sigma: f64,
     input_g: Shared<Port<usize>>,
     input_p: Shared<Port<(usize, f64)>>,
@@ -95,13 +95,13 @@ struct Transducer {
 }
 impl Transducer {
     fn new(name: &str, time: f64) -> Self {
-        let mut component = Model::new(name);
+        let mut component = Component::new(name);
         Self {
             sigma: time,
             input_g: component.add_in_port::<usize>("input_g"),
             input_p: component.add_in_port::<(usize, f64)>("input_p"),
             output: component.add_out_port::<bool>("output"),
-            model: component,
+            component: component,
         }
     }
     fn lambda(&self) {

@@ -1,4 +1,4 @@
-use crate::Mutable;
+use crate::{Component, Mutable};
 use std::any::{type_name, Any};
 use std::fmt::{Debug, Display, Formatter, Result};
 use std::ops::{Deref, DerefMut};
@@ -8,15 +8,18 @@ use std::ops::{Deref, DerefMut};
 pub struct Port<T> {
     /// Name of the port.
     name: String,
+    /// Parent component of the port
+    parent: *const Component,
     /// Message bag.
     bag: Mutable<Vec<T>>,
 }
 
 impl<T> Port<T> {
     /// Constructor function.
-    pub fn new(name: &str) -> Self {
+    pub fn new(name: &str, parent: *const Component) -> Self {
         Self {
             name: name.to_string(),
+            parent,
             bag: Mutable::new(Vec::new()),
         }
     }
@@ -67,13 +70,13 @@ impl<T: Clone> Port<T> {
 
 impl<T: 'static> Port<T> {
     /// Tries to convert a trait object [`AsPort`] to a reference to [`Port<T>`].
-    pub(crate) fn try_upgrade(port: &dyn AsPort) -> Option<&Port<T>> {
+    pub(crate) fn try_upgrade(port: &dyn ErasedPort) -> Option<&Port<T>> {
         port.as_any().downcast_ref::<Port<T>>()
     }
 
     /// Converts a trait object [`AsPort`] to a reference to [`Port<T>`].
     /// It panics if this conversion is not possible.
-    pub(crate) fn upgrade(port: &dyn AsPort) -> &Port<T> {
+    pub(crate) fn upgrade(port: &dyn ErasedPort) -> &Port<T> {
         Port::<T>::try_upgrade(port).unwrap_or_else(|| {
             panic!(
                 "port {} is incompatible with value type {}",
@@ -84,7 +87,7 @@ impl<T: 'static> Port<T> {
     }
 
     /// Checks if a trait object [`AsPort`] can be upgraded to a reference to [`Port<T>`].
-    pub(crate) fn is_compatible(port: &dyn AsPort) -> bool {
+    pub(crate) fn is_compatible(port: &dyn ErasedPort) -> bool {
         Port::<T>::try_upgrade(port).is_some()
     }
 }
@@ -95,13 +98,16 @@ impl<T> Display for Port<T> {
     }
 }
 
-/// Interface for DEVS ports.
-pub(crate) trait AsPort: Debug + Display {
+/// Interface for DEVS ports. In contrast to [`Port`], this trait does not consider message types.
+pub(crate) trait ErasedPort: Debug + Display {
     /// Port-to-any conversion.
     fn as_any(&self) -> &dyn Any;
 
     /// Returns the name of the port.
     fn get_name(&self) -> &str;
+
+    /// Returns pointer to the parent component of the port.
+    fn get_parent(&self) -> *const Component;
 
     /// Returns `true` if the port does not contain any value.
     fn is_empty(&self) -> bool;
@@ -110,19 +116,23 @@ pub(crate) trait AsPort: Debug + Display {
     fn clear(&self);
 
     /// Checks if one port is compatible with other.
-    fn is_compatible(&self, other: &dyn AsPort) -> bool;
+    fn is_compatible(&self, other: &dyn ErasedPort) -> bool;
 
     /// Propagates values from other port to the port.
-    fn propagate(&self, other: &dyn AsPort);
+    fn propagate(&self, other: &dyn ErasedPort);
 }
 
-impl<T: 'static + Clone + Debug> AsPort for Port<T> {
+impl<T: 'static + Clone + Debug> ErasedPort for Port<T> {
     fn as_any(&self) -> &dyn Any {
         self
     }
 
     fn get_name(&self) -> &str {
         &self.name
+    }
+
+    fn get_parent(&self) -> *const Component {
+        self.parent
     }
 
     fn is_empty(&self) -> bool {
@@ -133,11 +143,11 @@ impl<T: 'static + Clone + Debug> AsPort for Port<T> {
         self.borrow_bag_mut().clear();
     }
 
-    fn is_compatible(&self, other: &dyn AsPort) -> bool {
+    fn is_compatible(&self, other: &dyn ErasedPort) -> bool {
         Port::<T>::is_compatible(other)
     }
 
-    fn propagate(&self, port_from: &dyn AsPort) {
+    fn propagate(&self, port_from: &dyn ErasedPort) {
         self.borrow_bag_mut()
             .extend_from_slice(&*Port::<T>::upgrade(port_from).borrow_bag());
     }
@@ -149,7 +159,7 @@ mod tests {
 
     #[test]
     fn test_port() {
-        let port_a = Port::new("port_a");
+        let port_a = Port::new("port_a", std::ptr::null());
         assert_eq!("port_a", port_a.get_name());
         assert_eq!("port_a<usize>", port_a.to_string());
         assert!(port_a.is_empty());
@@ -180,7 +190,7 @@ mod tests {
 
     #[test]
     fn test_port_trait() {
-        let port_a = Port::<i32>::new("port_a");
+        let port_a = Port::<i32>::new("port_a", std::ptr::null());
 
         assert!(Port::<i32>::is_compatible(&port_a));
         assert!(!Port::<i64>::is_compatible(&port_a));
@@ -191,14 +201,14 @@ mod tests {
     #[test]
     #[should_panic(expected = "port port_a<i32> is incompatible with value type i64")]
     fn test_port_upgrade_panics() {
-        let port_a = Port::<i32>::new("port_a");
+        let port_a = Port::<i32>::new("port_a", std::ptr::null());
         Port::<i64>::upgrade(&port_a);
     }
 
     #[test]
     fn test_propagate() {
-        let port_a = Port::new("port_a");
-        let port_b = Port::new("port_b");
+        let port_a = Port::new("port_a", std::ptr::null());
+        let port_b = Port::new("port_b", std::ptr::null());
 
         for i in 0..10 {
             port_a.add_value(i);

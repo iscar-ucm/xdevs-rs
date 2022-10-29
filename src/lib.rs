@@ -1,11 +1,11 @@
 pub mod modeling;
 pub mod simulation;
 
-pub use modeling::atomic::AsAtomic;
+pub use modeling::atomic::Atomic;
 pub use modeling::coupled::Coupled;
 pub use modeling::port::Port;
-pub use modeling::{AsModel, Clock, Model};
-pub use simulation::RootCoordinator;
+pub use modeling::Component;
+pub use simulation::{RootCoordinator, Simulator};
 
 use std::fmt::{Display, Formatter, Result};
 use std::hash::{Hash, Hasher};

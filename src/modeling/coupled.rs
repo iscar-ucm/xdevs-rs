@@ -1,17 +1,17 @@
-use crate::modeling::port::AsPort;
-use crate::{AsModel, Model, RcHash, Shared};
+use crate::modeling::port::ErasedPort;
+use crate::{Component, Port, RcHash, Shared, Simulator};
 use std::collections::{HashMap, HashSet};
 use std::fmt::{Debug, Display, Formatter, Result};
 
-type CouplingsMap = HashMap<RcHash<dyn AsPort>, HashSet<RcHash<dyn AsPort>>>;
+type CouplingsMap = HashMap<RcHash<dyn ErasedPort>, HashSet<RcHash<dyn ErasedPort>>>;
 
 /// Coupled DEVS model.
 #[derive(Debug)]
 pub struct Coupled {
     /// Component wrapped by the coupled model.
-    model: Model,
+    component: Component,
     /// Components set of the DEVS coupled model.
-    components: HashMap<String, Box<dyn AsModel>>,
+    components: HashMap<String, Box<dyn Simulator>>,
     /// External input couplings.
     eic: CouplingsMap,
     /// Internal couplings.
@@ -24,7 +24,7 @@ impl Coupled {
     /// Creates a new coupled DEVS model.
     pub fn new(name: &str) -> Self {
         Self {
-            model: Model::new(name),
+            component: Component::new(name),
             components: HashMap::new(),
             eic: HashMap::new(),
             ic: HashMap::new(),
@@ -35,8 +35,8 @@ impl Coupled {
     /// Returns false if coupling was already defined
     fn add_coupling(
         couplings: &mut CouplingsMap,
-        port_from: Shared<dyn AsPort>,
-        port_to: Shared<dyn AsPort>,
+        port_from: Shared<dyn ErasedPort>,
+        port_to: Shared<dyn ErasedPort>,
     ) -> bool {
         if !port_from.is_compatible(&*port_to) {
             panic!("ports {} and {} are incompatible", port_from, port_to);
@@ -45,6 +45,18 @@ impl Coupled {
             .entry(RcHash(port_to.clone()))
             .or_insert_with(HashSet::new);
         ports_from.insert(RcHash(port_from.clone()))
+    }
+
+    /// Adds a new input port of type [`Port<T>`] to the component and returns a reference to it.
+    /// It panics if there is already an input port with the same name.
+    pub fn add_in_port<T: 'static + Clone + Debug>(&mut self, port_name: &str) -> Shared<Port<T>> {
+        self.component.add_in_port(port_name)
+    }
+
+    /// Adds a new output port of type [`Port<T>`] to the component and returns a reference to it.
+    /// It panics if there is already an output port with the same name.
+    pub fn add_out_port<T: 'static + Clone + Debug>(&mut self, port_name: &str) -> Shared<Port<T>> {
+        self.component.add_out_port(port_name)
     }
 
     /// Adds a new component to the coupled model.
@@ -58,12 +70,12 @@ impl Coupled {
     /// top_coupled.add_component(Coupled::new("component"));
     /// // top_coupled.add_component(Coupled::new("component"));  // this panics (duplicate name)
     /// ```
-    pub fn add_component<T: 'static + AsModel>(&mut self, component: T) {
+    pub fn add_component<T: 'static + Simulator>(&mut self, component: T) {
         let component_name = component.get_name();
         if self.components.contains_key(component_name) {
             panic!(
                 "coupled model {} already contains component with name {}",
-                self.model, component_name
+                self.component, component_name
             )
         }
         self.components
@@ -72,7 +84,7 @@ impl Coupled {
 
     /// Returns a dynamic reference to a component with the provided name.
     /// If the coupled model does not contain any model with that name, it panics.
-    fn get_component(&self, component_name: &str) -> &Box<dyn AsModel> {
+    fn get_component(&self, component_name: &str) -> &Box<dyn Simulator> {
         self.components.get(component_name).unwrap_or_else(|| {
             panic!(
                 "coupled model {} does not contain component with name {}",
@@ -94,7 +106,7 @@ impl Coupled {
     ///
     /// # Examples
     /// ```
-    /// use xdevs::{AsModel, Coupled};
+    /// use xdevs::Coupled;
     ///
     /// let mut component = Coupled::new("component");
     /// component.add_in_port::<i32>("input");
@@ -106,9 +118,9 @@ impl Coupled {
     /// // top_coupled.add_eic("input", "component", "input");  // this panics (duplicate coupling)
     /// ```
     pub fn add_eic(&mut self, port_from_name: &str, component_to_name: &str, port_to_name: &str) {
-        let port_from = self.as_model().get_in_port(port_from_name);
+        let port_from = self.component.get_in_port(port_from_name);
         let component = self.get_component(component_to_name);
-        let port_to = component.as_model().get_in_port(port_to_name);
+        let port_to = component.get_component().get_in_port(port_to_name);
         if !Self::add_coupling(&mut self.eic, port_from, port_to) {
             panic!(
                 "EIC coupling {}->{}::{} is already defined",
@@ -130,7 +142,7 @@ impl Coupled {
     ///
     /// # Examples
     /// ```
-    /// use xdevs::{AsModel, Coupled};
+    /// use xdevs::Coupled;
     ///
     /// let mut component_1 = Coupled::new("component_1");
     /// component_1.add_out_port::<i32>("output");
@@ -150,10 +162,10 @@ impl Coupled {
         component_to_name: &str,
         port_to_name: &str,
     ) {
-        let component_from = self.get_component(component_from_name).as_model();
+        let component_from = self.get_component(component_from_name).get_component();
         let port_from = component_from.get_out_port(port_from_name);
         let component_to = self.get_component(component_to_name);
-        let port_to = component_to.as_model().get_in_port(port_to_name);
+        let port_to = component_to.get_component().get_in_port(port_to_name);
         if !Self::add_coupling(&mut self.ic, port_from, port_to) {
             panic!(
                 "IC coupling {}::{}->{}::{} is already defined",
@@ -174,7 +186,7 @@ impl Coupled {
     ///
     /// # Examples
     /// ```
-    /// use xdevs::{AsModel, Coupled};
+    /// use xdevs::Coupled;
     ///
     /// let mut component = Coupled::new("component");
     /// component.add_out_port::<i32>("output");
@@ -186,9 +198,9 @@ impl Coupled {
     /// // top_coupled.add_eoc("component", "output", "output");  // this panics (duplicate coupling)
     /// ```
     pub fn add_eoc(&mut self, component_from_name: &str, port_from_name: &str, port_to_name: &str) {
-        let component = self.get_component(component_from_name).as_model();
+        let component = self.get_component(component_from_name).get_component();
         let port_from = component.get_out_port(port_from_name);
-        let port_to = self.as_model().get_out_port(port_to_name);
+        let port_to = self.component.get_out_port(port_to_name);
         if !Self::add_coupling(&mut self.eoc, port_from, port_to) {
             panic!(
                 "EOC coupling <{}::{}->{}> is already defined",
@@ -204,38 +216,35 @@ impl Display for Coupled {
     }
 }
 
-impl AsModel for Coupled {
-    fn as_model(&self) -> &Model {
-        &self.model
+impl Simulator for Coupled {
+    fn get_component(&self) -> &Component {
+        &self.component
     }
 
-    fn as_model_mut(&mut self) -> &mut Model {
-        &mut self.model
+    fn get_component_mut(&mut self) -> &mut Component {
+        &mut self.component
     }
 
-    fn start_simulation(&mut self, t_start: f64) {
+    fn start(&mut self, t_start: f64) {
         let mut t_next = f64::INFINITY;
         for component in self.components.values_mut() {
-            component.start_simulation(t_start);
-            let t = component.as_model().t_next();
+            component.start(t_start);
+            let t = component.get_t_next();
             if t < t_next {
                 t_next = t;
             }
         }
-        self.model.set_clock(t_start, t_next);
+        self.set_sim_t(t_start, t_next);
     }
 
-    fn stop_simulation(&mut self, t_stop: f64) {
-        self.components
-            .values_mut()
-            .for_each(|c| c.stop_simulation(t_stop)); // TODO parallel?
-        self.model.set_clock(t_stop, f64::INFINITY);
+    fn stop(&mut self, t_stop: f64) {
+        self.components.values_mut().for_each(|c| c.stop(t_stop));
+        self.set_sim_t(t_stop, f64::INFINITY);
     }
 
-    fn lambda(&mut self, t: f64) {
-        // TODO parallel?
-        if t >= self.model.t_next() {
-            self.components.values_mut().for_each(|c| c.lambda(t));
+    fn collection(&mut self, t: f64) {
+        if t >= self.get_t_next() {
+            self.components.values_mut().for_each(|c| c.collection(t));
             for (port_to, ports_from) in self.ic.iter() {
                 ports_from
                     .iter()
@@ -249,27 +258,26 @@ impl AsModel for Coupled {
         }
     }
 
-    fn delta(&mut self, t: f64) {
+    fn transition(&mut self, t: f64) {
         for (port_to, ports_from) in self.eic.iter() {
             ports_from
                 .iter()
                 .for_each(|port_from| port_to.propagate(&**port_from))
         }
-        self.components.values_mut().for_each(|c| c.delta(t));
-        self.model.clock.t_last = t;
+        self.components.values_mut().for_each(|c| c.transition(t));
         let mut next_t = f64::INFINITY;
         for component in self.components.values() {
-            let t = component.as_model().t_next();
+            let t = component.get_t_next();
             if t < next_t {
                 next_t = t;
             }
         }
-        self.model.clock.t_next = next_t;
+        self.set_sim_t(t, next_t);
     }
 
     fn clear_ports(&mut self) {
         self.components.values_mut().for_each(|c| c.clear_ports());
-        self.model.clear_ports();
+        self.component.clear_ports();
     }
 }
 
@@ -280,13 +288,13 @@ impl AsModel for Coupled {
 macro_rules! impl_coupled {
     ($($COUPLED:ident),+) => {
         $(
-            impl AsModel for $COUPLED {
-                fn as_model(&self) -> &Model { self.coupled.as_model() }
-                fn as_model_mut(&mut self) -> &mut Model { self.coupled.as_model_mut() }
-                fn start_simulation(&mut self, t_start: f64) { self.coupled.start_simulation(t_start); }
-                fn stop_simulation(&mut self, t_stop: f64) { self.coupled.stop_simulation(t_stop); }
-                fn lambda(&mut self, t: f64) { self.coupled.lambda(t); }
-                fn delta(&mut self, t: f64) { self.coupled.delta(t); }
+            impl Simulator for $COUPLED {
+                fn get_component(&self) -> &Component { self.coupled.get_component() }
+                fn get_component_mut(&mut self) -> &mut Component { self.coupled.get_component_mut() }
+                fn start(&mut self, t_start: f64) { self.coupled.start(t_start); }
+                fn stop(&mut self, t_stop: f64) { self.coupled.stop(t_stop); }
+                fn collection(&mut self, t: f64) { self.coupled.collection(t); }
+                fn transition(&mut self, t: f64) { self.coupled.transition(t); }
                 fn clear_ports(&mut self) { self.coupled.clear_ports(); }
             }
         )+
