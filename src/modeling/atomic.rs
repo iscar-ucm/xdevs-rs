@@ -62,18 +62,18 @@ pub fn clear_ports<T: Atomic + Simulator>(this: &mut T) {
     this.get_component_mut().clear_ports();
 }
 
-/// Helper macro to implement the [`Atomic`] trait. TODO try to use the derive stuff
+/// Helper macro to implement the [`Atomic`] trait.
 #[macro_export]
 macro_rules! impl_atomic {
     ($($ATOMIC:ident),+) => {
         $(
-            impl Atomic for $ATOMIC {
+            impl $crate::modeling::atomic::Atomic for $ATOMIC {
                 fn lambda(&self) { self.lambda(); }
                 fn delta_int(&mut self) { self.delta_int() }
                 fn delta_ext(&mut self, e: f64) { self. delta_ext(e) }
                 fn ta(&self) -> f64 { self.ta() }
             }
-            impl Simulator for $ATOMIC {
+            impl $crate::simulation::Simulator for $ATOMIC {
                 fn get_component(&self) -> &Component { &self.component }
                 fn get_component_mut(&mut self) -> &mut Component { &mut self.component }
                 fn start(&mut self, t_start: f64) { $crate::modeling::atomic::start(self, t_start); }

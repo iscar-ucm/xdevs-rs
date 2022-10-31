@@ -1,105 +1,12 @@
-use crate::{Component, Mutable};
+use crate::Component;
 use std::any::{type_name, Any};
+use std::cell::RefCell;
 use std::fmt::{Debug, Display, Formatter, Result};
-use std::ops::{Deref, DerefMut};
+use std::ops::Deref;
+use std::rc::Rc;
 
-/// DEVS port struct.
-#[derive(Debug)]
-pub struct Port<T> {
-    /// Name of the port.
-    name: String,
-    /// Parent component of the port
-    parent: *const Component,
-    /// Message bag.
-    bag: Mutable<Vec<T>>,
-}
-
-impl<T> Port<T> {
-    /// Constructor function.
-    pub fn new(name: &str, parent: *const Component) -> Self {
-        Self {
-            name: name.to_string(),
-            parent,
-            bag: Mutable::new(Vec::new()),
-        }
-    }
-
-    /// Helper function to get a reference to the message bag.
-    fn borrow_bag(&self) -> impl Deref<Target = Vec<T>> + '_ {
-        #[cfg(not(feature = "parallel"))]
-        return self.bag.borrow();
-        #[cfg(feature = "parallel")]
-        return self.bag.read().unwrap();
-    }
-
-    /// Helper function to get a mutable reference to the message bag.
-    fn borrow_bag_mut(&self) -> impl DerefMut<Target = Vec<T>> + '_ {
-        #[cfg(not(feature = "parallel"))]
-        return self.bag.borrow_mut();
-        #[cfg(feature = "parallel")]
-        return self.bag.write().unwrap();
-    }
-
-    /// It checks if the message bag of the port is empty.
-    pub fn is_empty(&self) -> bool {
-        self.borrow_bag().is_empty()
-    }
-
-    /// It returns a reference to the message bag of the port.
-    pub fn get_values(&self) -> impl Deref<Target = Vec<T>> + '_ {
-        self.borrow_bag()
-    }
-
-    /// It returns the number of messages in the bag of the port.
-    pub fn len(&self) -> usize {
-        self.borrow_bag().len()
-    }
-
-    /// It adds a new value to the message bag of the port.
-    pub fn add_value(&self, value: T) {
-        self.borrow_bag_mut().push(value);
-    }
-}
-
-impl<T: Clone> Port<T> {
-    /// It adds multiple values to the message bag of the port.
-    pub fn add_values(&self, values: &[T]) {
-        self.borrow_bag_mut().extend_from_slice(values);
-    }
-}
-
-impl<T: 'static> Port<T> {
-    /// Tries to convert a trait object [`AsPort`] to a reference to [`Port<T>`].
-    pub(crate) fn try_upgrade(port: &dyn ErasedPort) -> Option<&Port<T>> {
-        port.as_any().downcast_ref::<Port<T>>()
-    }
-
-    /// Converts a trait object [`AsPort`] to a reference to [`Port<T>`].
-    /// It panics if this conversion is not possible.
-    pub(crate) fn upgrade(port: &dyn ErasedPort) -> &Port<T> {
-        Port::<T>::try_upgrade(port).unwrap_or_else(|| {
-            panic!(
-                "port {} is incompatible with value type {}",
-                port,
-                type_name::<T>()
-            )
-        })
-    }
-
-    /// Checks if a trait object [`AsPort`] can be upgraded to a reference to [`Port<T>`].
-    pub(crate) fn is_compatible(port: &dyn ErasedPort) -> bool {
-        Port::<T>::try_upgrade(port).is_some()
-    }
-}
-
-impl<T> Display for Port<T> {
-    fn fmt(&self, f: &mut Formatter<'_>) -> Result {
-        write!(f, "{}<{}>", self.name, type_name::<T>())
-    }
-}
-
-/// Interface for DEVS ports. In contrast to [`Port`], this trait does not consider message types.
-pub(crate) trait ErasedPort: Debug + Display {
+/// Interface for DEVS ports. This trait does not consider message types.
+pub(crate) trait AbstractPort: Debug + Display {
     /// Port-to-any conversion.
     fn as_any(&self) -> &dyn Any;
 
@@ -116,13 +23,87 @@ pub(crate) trait ErasedPort: Debug + Display {
     fn clear(&self);
 
     /// Checks if one port is compatible with other.
-    fn is_compatible(&self, other: &dyn ErasedPort) -> bool;
+    fn is_compatible(&self, other: &dyn AbstractPort) -> bool;
 
     /// Propagates values from other port to the port.
-    fn propagate(&self, other: &dyn ErasedPort);
+    fn propagate(&self, other: &dyn AbstractPort);
 }
 
-impl<T: 'static + Clone + Debug> ErasedPort for Port<T> {
+/// Directionless DEVS port with an associated message type.
+#[derive(Debug)]
+pub(crate) struct TypedPort<T> {
+    /// Name of the port.
+    name: String,
+    /// Parent component of the port
+    parent: *const Component,
+    /// Message bag.
+    bag: RefCell<Vec<T>>,
+}
+
+impl<T> TypedPort<T> {
+    /// Constructor function.
+    pub fn new(name: &str, parent: *const Component) -> Self {
+        Self {
+            name: name.to_string(),
+            parent,
+            bag: RefCell::new(Vec::new()),
+        }
+    }
+
+    /// It checks if the message bag of the port is empty.
+    pub fn is_empty(&self) -> bool {
+        self.bag.borrow().is_empty()
+    }
+
+    /// It returns a reference to the message bag of the port.
+    pub fn get_values(&self) -> impl Deref<Target = Vec<T>> + '_ {
+        self.bag.borrow()
+    }
+
+    /// It adds a new value to the message bag of the port.
+    pub fn add_value(&self, value: T) {
+        self.bag.borrow_mut().push(value);
+    }
+}
+
+impl<T: Clone> TypedPort<T> {
+    /// It adds multiple values to the message bag of the port.
+    pub fn add_values(&self, values: &[T]) {
+        self.bag.borrow_mut().extend_from_slice(values);
+    }
+}
+
+impl<T: 'static> TypedPort<T> {
+    /// Tries to convert a trait object [`AsPort`] to a reference to [`Port<T>`].
+    pub(crate) fn try_upgrade(port: &dyn AbstractPort) -> Option<&TypedPort<T>> {
+        port.as_any().downcast_ref::<TypedPort<T>>()
+    }
+
+    /// Converts a trait object [`AsPort`] to a reference to [`Port<T>`].
+    /// It panics if this conversion is not possible.
+    pub(crate) fn upgrade(port: &dyn AbstractPort) -> &TypedPort<T> {
+        TypedPort::<T>::try_upgrade(port).unwrap_or_else(|| {
+            panic!(
+                "port {} is incompatible with value type {}",
+                port,
+                type_name::<T>()
+            )
+        })
+    }
+
+    /// Checks if a trait object [`AsPort`] can be upgraded to a reference to [`Port<T>`].
+    pub(crate) fn is_compatible(port: &dyn AbstractPort) -> bool {
+        TypedPort::<T>::try_upgrade(port).is_some()
+    }
+}
+
+impl<T> Display for TypedPort<T> {
+    fn fmt(&self, f: &mut Formatter<'_>) -> Result {
+        write!(f, "{}<{}>", self.name, type_name::<T>())
+    }
+}
+
+impl<T: 'static + Clone + Debug> AbstractPort for TypedPort<T> {
     fn as_any(&self) -> &dyn Any {
         self
     }
@@ -136,22 +117,61 @@ impl<T: 'static + Clone + Debug> ErasedPort for Port<T> {
     }
 
     fn is_empty(&self) -> bool {
-        self.borrow_bag().is_empty()
+        self.bag.borrow().is_empty()
     }
 
     fn clear(&self) {
-        self.borrow_bag_mut().clear();
+        self.bag.borrow_mut().clear();
     }
 
-    fn is_compatible(&self, other: &dyn ErasedPort) -> bool {
-        Port::<T>::is_compatible(other)
+    fn is_compatible(&self, other: &dyn AbstractPort) -> bool {
+        TypedPort::<T>::is_compatible(other)
     }
 
-    fn propagate(&self, port_from: &dyn ErasedPort) {
-        self.borrow_bag_mut()
-            .extend_from_slice(&*Port::<T>::upgrade(port_from).borrow_bag());
+    fn propagate(&self, port_from: &dyn AbstractPort) {
+        self.bag
+            .borrow_mut()
+            .extend_from_slice(&*TypedPort::<T>::upgrade(port_from).bag.borrow());
     }
 }
+
+/// Constant identifier for input ports.
+pub const IN: u8 = 0;
+/// Constant identifier for output ports.
+pub const OUT: u8 = 1;
+
+/// Directive DEVS port with an associated message type.
+/// This struct is useful for two reasons. First, it hides the Rc stuff from the users.
+/// Second, it constraints the methods available depending on their direction.
+#[derive(Clone, Debug)]
+pub struct Port<const D: u8, T> (pub(crate) Rc<TypedPort<T>>);
+
+/// For input ports, we can only check if they are empty and read their values.
+impl<T> Port<IN, T> {
+    pub fn is_empty(&self) -> bool {
+        self.0.is_empty()
+    }
+
+    pub fn get_values(&self) -> impl Deref<Target = Vec<T>> + '_ {
+        self.0.get_values()
+    }
+}
+
+/// For output ports, we can only add new values.
+impl<T> Port<OUT, T> {
+    /// It adds a new value to the message bag of the port.
+    pub fn add_value(&self, value: T) {
+        self.0.add_value(value);
+    }
+}
+
+impl<T: Clone> Port<OUT, T> {
+    /// It adds a new value to the message bag of the port.
+    pub fn add_values(&self, value: &[T]) {
+        self.0.add_values(value);
+    }
+}
+
 
 #[cfg(test)]
 mod tests {
@@ -159,25 +179,25 @@ mod tests {
 
     #[test]
     fn test_port() {
-        let port_a = Port::new("port_a", std::ptr::null());
+        let port_a = TypedPort::new("port_a", std::ptr::null());
         assert_eq!("port_a", port_a.get_name());
         assert_eq!("port_a<usize>", port_a.to_string());
         assert!(port_a.is_empty());
-        assert_eq!(0, port_a.len());
+        assert_eq!(0, port_a.get_values().len());
 
         port_a.add_value(0);
         assert!(!port_a.is_empty());
-        assert_eq!(1, port_a.len());
+        assert_eq!(1, port_a.get_values().len());
 
         port_a.clear();
         assert!(port_a.is_empty());
-        assert_eq!(0, port_a.len());
+        assert_eq!(0, port_a.get_values().len());
 
         for i in 0..10 {
             port_a.add_value(i);
             assert!(port_a.get_values().get(i).is_some());
             assert!(port_a.get_values().get(i + 1).is_none());
-            assert_eq!(i + 1, port_a.len());
+            assert_eq!(i + 1, port_a.get_values().len());
         }
 
         let mut i = 0;
@@ -190,25 +210,25 @@ mod tests {
 
     #[test]
     fn test_port_trait() {
-        let port_a = Port::<i32>::new("port_a", std::ptr::null());
+        let port_a = TypedPort::<i32>::new("port_a", std::ptr::null());
 
-        assert!(Port::<i32>::is_compatible(&port_a));
-        assert!(!Port::<i64>::is_compatible(&port_a));
-        assert!(Port::<i32>::try_upgrade(&port_a).is_some());
-        assert!(Port::<i64>::try_upgrade(&port_a).is_none());
+        assert!(TypedPort::<i32>::is_compatible(&port_a));
+        assert!(!TypedPort::<i64>::is_compatible(&port_a));
+        assert!(TypedPort::<i32>::try_upgrade(&port_a).is_some());
+        assert!(TypedPort::<i64>::try_upgrade(&port_a).is_none());
     }
 
     #[test]
     #[should_panic(expected = "port port_a<i32> is incompatible with value type i64")]
     fn test_port_upgrade_panics() {
-        let port_a = Port::<i32>::new("port_a", std::ptr::null());
-        Port::<i64>::upgrade(&port_a);
+        let port_a = TypedPort::<i32>::new("port_a", std::ptr::null());
+        TypedPort::<i64>::upgrade(&port_a);
     }
 
     #[test]
     fn test_propagate() {
-        let port_a = Port::new("port_a", std::ptr::null());
-        let port_b = Port::new("port_b", std::ptr::null());
+        let port_a = TypedPort::new("port_a", std::ptr::null());
+        let port_b = TypedPort::new("port_b", std::ptr::null());
 
         for i in 0..10 {
             port_a.add_value(i);
@@ -216,19 +236,19 @@ mod tests {
         }
 
         port_a.propagate(&port_b);
-        assert_eq!(20, port_a.len());
-        assert_eq!(10, port_b.len());
+        assert_eq!(20, port_a.get_values().len());
+        assert_eq!(10, port_b.get_values().len());
 
         port_b.add_value(20);
-        assert_eq!(20, port_a.len());
-        assert_eq!(11, port_b.len());
+        assert_eq!(20, port_a.get_values().len());
+        assert_eq!(11, port_b.get_values().len());
 
         port_a.clear();
-        assert_eq!(0, port_a.len());
-        assert_eq!(11, port_b.len());
+        assert_eq!(0, port_a.get_values().len());
+        assert_eq!(11, port_b.get_values().len());
 
         port_a.propagate(&port_b);
-        assert_eq!(11, port_a.len());
+        assert_eq!(11, port_a.get_values().len());
 
         port_a.clear();
         port_b.clear();

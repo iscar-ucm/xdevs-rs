@@ -1,3 +1,4 @@
+use std::rc::Rc;
 use xdevs::*;
 
 #[derive(Debug)]
@@ -6,8 +7,8 @@ struct Generator {
     sigma: f64,
     period: f64,
     count: usize,
-    input: Shared<Port<bool>>,
-    output: Shared<Port<usize>>,
+    input: Port<IN, bool>,
+    output: Port<OUT, usize>,
 }
 impl Generator {
     fn new(name: &str, period: f64) -> Self {
@@ -47,8 +48,8 @@ struct Processor {
     sigma: f64,
     time: f64,
     job: Option<usize>,
-    input: Shared<Port<usize>>,
-    output: Shared<Port<(usize, f64)>>,
+    input: Port<IN, usize>,
+    output: Port<OUT, (usize, f64)>,
 }
 impl Processor {
     fn new(name: &str, time: f64) -> Self {
@@ -89,9 +90,9 @@ impl_atomic!(Processor); // TODO issue with private/public stuff
 struct Transducer {
     component: Component,
     sigma: f64,
-    input_g: Shared<Port<usize>>,
-    input_p: Shared<Port<(usize, f64)>>,
-    output: Shared<Port<bool>>,
+    input_g: Port<IN, usize>,
+    input_p: Port<IN, (usize, f64)>,
+    output: Port<OUT, bool>,
 }
 impl Transducer {
     fn new(name: &str, time: f64) -> Self {
@@ -135,8 +136,8 @@ impl_atomic!(Transducer); // TODO issue with private/public stuff
 #[derive(Debug)]
 struct ExperimentalFrame {
     coupled: Coupled,
-    _input: Shared<Port<(usize, f64)>>,
-    _output: Shared<Port<usize>>,
+    _input: Port<IN, (usize, f64)>,
+    _output: Port<OUT, usize>,
 }
 impl ExperimentalFrame {
     fn new(name: &str, period: f64, observation: f64) -> Self {

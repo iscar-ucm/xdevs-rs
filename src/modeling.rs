@@ -2,10 +2,14 @@ pub mod atomic;
 pub mod coupled;
 pub mod port;
 
-use crate::Shared;
-use port::{ErasedPort, Port};
+pub use atomic::Atomic;
+pub use coupled::Coupled;
+pub use port::{Port, IN, OUT};
+
+use port::{AbstractPort, TypedPort};
 use std::collections::HashMap;
 use std::fmt::{Debug, Display, Formatter, Result};
+use std::rc::Rc;
 
 /// Generic DEVS model. Models must comprise a ['Component'] to implement the [`Simulator`] trait.
 #[derive(Debug)]
@@ -17,13 +21,13 @@ pub struct Component {
     /// Time for the next component state transition.
     t_next: f64,
     /// Input port set of the DEVS component. Input port names must be unique.
-    input_map: HashMap<String, Shared<dyn ErasedPort>>,
+    input_map: HashMap<String, Rc<dyn AbstractPort>>,
     /// Output port set of the DEVS component. Output port names must be unique.
-    output_map: HashMap<String, Shared<dyn ErasedPort>>,
+    output_map: HashMap<String, Rc<dyn AbstractPort>>,
     /// Input port set of the DEVS component (serialized for better performance).
-    input_vec: Vec<Shared<dyn ErasedPort>>,
+    input_vec: Vec<Rc<dyn AbstractPort>>,
     /// Output port set of the DEVS component (serialized for better performance).
-    output_vec: Vec<Shared<dyn ErasedPort>>,
+    output_vec: Vec<Rc<dyn AbstractPort>>,
 }
 
 impl Component {
@@ -63,33 +67,35 @@ impl Component {
 
     /// Adds a new input port of type [`Port<T>`] to the component and returns a reference to it.
     /// It panics if there is already an input port with the same name.
-    pub fn add_in_port<T: 'static + Clone + Debug>(&mut self, port_name: &str) -> Shared<Port<T>> {
-        Self::add_port(self, &mut self.input_map, &mut self.input_vec, port_name).unwrap_or_else(
+    pub fn add_in_port<T: 'static + Clone + Debug>(&mut self, port_name: &str) -> Port<IN, T> {
+        let port = Self::add_port(self, &mut self.input_map, &mut self.input_vec, port_name).unwrap_or_else(
             || {
                 panic!(
                     "component {} already contains input port with name {}",
                     self.name, port_name
                 )
             },
-        )
+        );
+        Port::<IN, T>(port)
     }
 
     /// Adds a new output port of type [`Port<T>`] to the component and returns a reference to it.
     /// It panics if there is already an output port with the same name.
-    pub fn add_out_port<T: 'static + Clone + Debug>(&mut self, port_name: &str) -> Shared<Port<T>> {
-        Self::add_port(self, &mut self.output_map, &mut self.output_vec, port_name).unwrap_or_else(
+    pub fn add_out_port<T: 'static + Clone + Debug>(&mut self, port_name: &str) -> Port<OUT, T> {
+        let port = Self::add_port(self, &mut self.output_map, &mut self.output_vec, port_name).unwrap_or_else(
             || {
                 panic!(
                     "component {} already contains output port with name {}",
                     self.name, port_name
                 )
             },
-        )
+        );
+        Port::<OUT, T>(port)
     }
 
     /// Returns a pointer to an input port with the given name.
     /// If the component does not have any input port with this name, it panics.
-    fn get_in_port(&self, port_name: &str) -> Shared<dyn ErasedPort> {
+    fn get_in_port(&self, port_name: &str) -> Rc<dyn AbstractPort> {
         self.input_map
             .get(port_name)
             .unwrap_or_else(|| {
@@ -103,7 +109,7 @@ impl Component {
 
     /// Returns a pointer to an output port with the given name.
     /// If the component does not have any output port with this name, it panics.
-    fn get_out_port(&self, port_name: &str) -> Shared<dyn ErasedPort> {
+    fn get_out_port(&self, port_name: &str) -> Rc<dyn AbstractPort> {
         self.output_map
             .get(port_name)
             .unwrap_or_else(|| {
@@ -134,14 +140,14 @@ impl Component {
     /// Helper function to add a port to a component regardless of whether it is input or output.
     fn add_port<T: 'static + Clone + Debug>(
         component: *const Component,
-        ports_map: &mut HashMap<String, Shared<dyn ErasedPort>>,
-        ports_vec: &mut Vec<Shared<dyn ErasedPort>>,
+        ports_map: &mut HashMap<String, Rc<dyn AbstractPort>>,
+        ports_vec: &mut Vec<Rc<dyn AbstractPort>>,
         port_name: &str,
-    ) -> Option<Shared<Port<T>>> {
+    ) -> Option<Rc<TypedPort<T>>> {
         if ports_map.contains_key(port_name) {
             return None;
         }
-        let port = Shared::new(Port::<T>::new(port_name, component));
+        let port = Rc::new(TypedPort::<T>::new(port_name, component));
         ports_map.insert(port_name.to_string(), port.clone());
         ports_vec.push(port.clone());
         Some(port)
@@ -153,76 +159,6 @@ impl Display for Component {
         write!(f, "{}", self.name)
     }
 }
-
-/*
-/// Interface for DEVS components.
-pub trait AsModel: Debug {
-    /// All the DEVS component must own a [`Model`] struct.
-    /// This method returns a reference to this inner [`Model`].
-    fn as_model(&self) -> &Component;
-
-    /// All the DEVS component must own a [`Model`] struct.
-    /// This method returns a mutable reference to this inner [`Model`].
-    fn as_model_mut(&mut self) -> &mut Component;
-
-    /// It starts the simulation, setting the initial time to t_start.
-    fn start_simulation(&mut self, t_start: f64);
-
-    /// It stops the simulation, setting the last time to t_stop.
-    fn stop_simulation(&mut self, t_stop: f64);
-
-    /// Executes output functions and propagates messages according to ICs and EOCs.
-    fn lambda(&mut self, t: f64);
-
-    /// Propagates messages according to EICs and executes model transition functions.
-    fn delta(&mut self, t: f64);
-
-    /// Returns the name of the component.
-    fn get_name(&self) -> &str {
-        self.as_model().get_name()
-    }
-
-    /// Adds a new input port of type [`Port<T>`] to the component and returns a reference to it.
-    /// It panics if there is already an input port with the same name.
-    fn add_in_port<T>(&mut self, port_name: &str) -> Shared<Port<T>>
-    where
-        T: 'static + Clone + Debug,
-        Self: Sized,
-    {
-        self.as_model_mut().add_in_port(port_name)
-    }
-
-    /// Adds a new output port of type [`Port<T>`] to the component and returns a reference to it.
-    /// It panics if there is already an output port with the same name.
-    fn add_out_port<T>(&mut self, port_name: &str) -> Shared<Port<T>>
-    where
-        T: 'static + Clone + Debug,
-        Self: Sized,
-    {
-        self.as_model_mut().add_out_port(port_name)
-    }
-
-    /// Returns true if all the input ports of the model are empty.
-    fn is_input_empty(&self) -> bool {
-        self.as_model().is_input_empty()
-    }
-
-    /// Returns true if all the output ports of the model are empty.
-    fn is_output_empty(&self) -> bool {
-        self.as_model().is_output_empty()
-    }
-
-    /// Removes all the messages from all the ports.
-    fn clear_ports(&mut self) {
-        self.as_model_mut().clear_ports();
-    }
-
-    /// It returns the time of the latest model state transition.
-    fn get_time(&self) -> f64 {
-        self.as_model().clock.t_last
-    }
-}
-*/
 
 #[cfg(test)]
 mod tests {
@@ -286,7 +222,7 @@ mod tests {
         assert!(a.is_input_empty());
         assert!(a.is_output_empty());
 
-        in_i32.add_value(1);
+        in_i32.0.add_value(1);
         assert!(!a.is_input_empty());
         assert!(a.is_output_empty());
         {

@@ -1,9 +1,11 @@
-use crate::modeling::port::ErasedPort;
-use crate::{Component, Port, RcHash, Shared, Simulator};
+use crate::modeling::port::AbstractPort;
+use crate::{Component, Port, RcHash, Simulator, IN, OUT};
 use std::collections::{HashMap, HashSet};
 use std::fmt::{Debug, Display, Formatter, Result};
+use std::rc::Rc;
+use std::cell::RefCell;
 
-type CouplingsMap = HashMap<RcHash<dyn ErasedPort>, HashSet<RcHash<dyn ErasedPort>>>;
+type CouplingsMap = HashMap<RcHash<dyn AbstractPort>, HashSet<RcHash<dyn AbstractPort>>>;
 
 /// Coupled DEVS model.
 #[derive(Debug)]
@@ -35,8 +37,8 @@ impl Coupled {
     /// Returns false if coupling was already defined
     fn add_coupling(
         couplings: &mut CouplingsMap,
-        port_from: Shared<dyn ErasedPort>,
-        port_to: Shared<dyn ErasedPort>,
+        port_from: Rc<dyn AbstractPort>,
+        port_to: Rc<dyn AbstractPort>,
     ) -> bool {
         if !port_from.is_compatible(&*port_to) {
             panic!("ports {} and {} are incompatible", port_from, port_to);
@@ -49,13 +51,13 @@ impl Coupled {
 
     /// Adds a new input port of type [`Port<T>`] to the component and returns a reference to it.
     /// It panics if there is already an input port with the same name.
-    pub fn add_in_port<T: 'static + Clone + Debug>(&mut self, port_name: &str) -> Shared<Port<T>> {
+    pub fn add_in_port<T: 'static + Clone + Debug>(&mut self, port_name: &str) -> Port<IN, T> {
         self.component.add_in_port(port_name)
     }
 
     /// Adds a new output port of type [`Port<T>`] to the component and returns a reference to it.
     /// It panics if there is already an output port with the same name.
-    pub fn add_out_port<T: 'static + Clone + Debug>(&mut self, port_name: &str) -> Shared<Port<T>> {
+    pub fn add_out_port<T: 'static + Clone + Debug>(&mut self, port_name: &str) -> Port<OUT, T> {
         self.component.add_out_port(port_name)
     }
 
@@ -283,12 +285,11 @@ impl Simulator for Coupled {
 
 /// Helper macro to implement the AsModel trait for coupled models.
 /// You can use this macro with any struct containing a field `coupled` of type [`Coupled`].
-/// TODO try to use the derive stuff (it will be more elegant).
 #[macro_export]
 macro_rules! impl_coupled {
     ($($COUPLED:ident),+) => {
         $(
-            impl Simulator for $COUPLED {
+            impl $crate::simulation::Simulator for $COUPLED {
                 fn get_component(&self) -> &Component { self.coupled.get_component() }
                 fn get_component_mut(&mut self) -> &mut Component { self.coupled.get_component_mut() }
                 fn start(&mut self, t_start: f64) { self.coupled.start(t_start); }
