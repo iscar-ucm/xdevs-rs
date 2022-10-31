@@ -58,12 +58,14 @@ impl<T: Atomic> Simulator for T {
     }
 
     fn start(&mut self, t_start: f64) {
+        Atomic::start(self);
         let ta = self.ta();
         self.set_sim_t(t_start, t_start + ta);
     }
 
     fn stop(&mut self, t_stop: f64) {
         self.set_sim_t(t_stop, f64::INFINITY);
+        Atomic::stop(self);
     }
 
     fn collection(&mut self, t: f64) {
@@ -176,6 +178,7 @@ impl<T: Simulator> RootCoordinator<T> {
             self.clear_ports();
             t_next = self.get_t_next();
         }
+        self.stop(t_next);
     }
 
     /// Runs a simulation for a given number of simulation cycles.
@@ -189,6 +192,7 @@ impl<T: Simulator> RootCoordinator<T> {
             t_next = self.get_t_next();
             n_steps -= 1;
         }
+        self.stop(t_next);
     }
 }
 

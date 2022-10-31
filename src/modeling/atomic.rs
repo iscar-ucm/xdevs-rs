@@ -9,6 +9,12 @@ pub trait Atomic: Debug {
     /// Returns mutable reference to inner component.
     fn get_component_mut(&mut self) -> &mut Component;
 
+    /// Method for performing any operation before simulating. By default, it does nothing.
+    fn start(&mut self) {}
+
+    /// Method for performing any operation after simulating. By default, it does nothing.
+    fn stop(&mut self) {}
+
     /// Returns current simulation time.
     fn get_time(&self) -> f64 {
         self.get_component().get_t_last()
@@ -34,40 +40,4 @@ pub trait Atomic: Debug {
         self.delta_int();
         self.delta_ext(0.);
     }
-}
-
-/// Helper macro to implement the [`Atomic`] trait using features from its inner [`Component`].
-/// To implement the [`Atomic`] trait for your struct `MyAtomic`, call `impl_atomic!(MyAtomic)`.
-/// You must ensure the following conditions:
-/// - `MyAtomic` has a field `component` of type [`Component`].
-/// - `MyAtomic` has the following methods:
-///     - `lambda(&self)` (i.e., output function).
-///     - `delta_int(&mut self)` (i.e., internal transition function).
-///     - `delta_ext(&mut self, e: f64)` (i.e., external transition function).
-///     - `ta(&self)` (i.e., time advance function).
-/// Currently, the confluent transition function can only be the default.
-#[macro_export]
-macro_rules! impl_atomic {
-    ($ATOMIC:ident) => {
-        impl $crate::modeling::atomic::Atomic for $ATOMIC {
-            fn get_component(&self) -> &Component {
-                &self.component
-            }
-            fn get_component_mut(&mut self) -> &mut Component {
-                &mut self.component
-            }
-            fn lambda(&self) {
-                self.lambda();
-            }
-            fn delta_int(&mut self) {
-                self.delta_int()
-            }
-            fn delta_ext(&mut self, e: f64) {
-                self.delta_ext(e)
-            }
-            fn ta(&self) -> f64 {
-                self.ta()
-            }
-        }
-    };
 }

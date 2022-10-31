@@ -1,4 +1,3 @@
-use xdevs::impl_atomic;
 use xdevs::modeling::*;
 use xdevs::simulation::*;
 
@@ -25,6 +24,14 @@ impl Generator {
             component,
         }
     }
+}
+impl Atomic for Generator {
+    fn get_component(&self) -> &Component {
+        &self.component
+    }
+    fn get_component_mut(&mut self) -> &mut Component {
+        &mut self.component
+    }
     fn lambda(&self) {
         self.output.add_value(self.count);
     }
@@ -32,7 +39,6 @@ impl Generator {
         self.count += 1;
         self.sigma = self.period;
     }
-
     fn delta_ext(&mut self, e: f64) {
         self.sigma -= e;
         if !self.input.is_empty() {
@@ -43,7 +49,6 @@ impl Generator {
         self.sigma
     }
 }
-impl_atomic!(Generator);
 
 #[derive(Debug)]
 struct Processor {
@@ -68,11 +73,22 @@ impl Processor {
             component,
         }
     }
+}
+impl Atomic for Processor {
+    fn get_component(&self) -> &Component {
+        &self.component
+    }
+
+    fn get_component_mut(&mut self) -> &mut Component {
+        &mut self.component
+    }
+
     fn lambda(&self) {
         if let Some(job) = self.job {
             self.output.add_value((job, self.time));
         }
     }
+
     fn delta_int(&mut self) {
         self.sigma = f64::INFINITY;
         self.job = None;
@@ -85,11 +101,11 @@ impl Processor {
             self.sigma = self.time;
         }
     }
+
     fn ta(&self) -> f64 {
         self.sigma
     }
 }
-impl_atomic!(Processor);
 
 #[derive(Debug)]
 struct Transducer {
@@ -113,9 +129,20 @@ impl Transducer {
             component,
         }
     }
+}
+impl Atomic for Transducer {
+    fn get_component(&self) -> &Component {
+        &self.component
+    }
+
+    fn get_component_mut(&mut self) -> &mut Component {
+        &mut self.component
+    }
+
     fn lambda(&self) {
         self.output.add_value(true);
     }
+
     fn delta_int(&mut self) {
         self.sigma = f64::INFINITY;
         println!("TRANSDUCER FINISHED");
@@ -135,11 +162,11 @@ impl Transducer {
             );
         }
     }
+
     fn ta(&self) -> f64 {
         self.sigma
     }
 }
-impl_atomic!(Transducer);
 
 #[derive(Debug)]
 struct ExperimentalFrame {
