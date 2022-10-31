@@ -13,10 +13,8 @@ struct Generator {
 impl Generator {
     fn new(name: &str, period: f64) -> Self {
         let mut component = Component::new(name);
-        let input = Port::<Input, bool>::new("input");
-        let output = Port::<Output, usize>::new("output");
-        component.add_in_port(&input);
-        component.add_out_port(&output);
+        let input = component.add_in_port::<bool>("input");
+        let output = component.add_out_port::<usize>("output");
         Self {
             sigma: 0.,
             period,
@@ -58,10 +56,8 @@ struct Processor {
 impl Processor {
     fn new(name: &str, time: f64) -> Self {
         let mut component = Component::new(name);
-        let input = Port::<Input, usize>::new("input");
-        let output = Port::<Output, (usize, f64)>::new("output");
-        component.add_in_port(&input);
-        component.add_out_port(&output);
+        let input = component.add_in_port::<usize>("input");
+        let output = component.add_out_port::<(usize, f64)>("output");
         Self {
             sigma: f64::INFINITY,
             time,
@@ -105,12 +101,9 @@ struct Transducer {
 impl Transducer {
     fn new(name: &str, time: f64) -> Self {
         let mut component = Component::new(name);
-        let input_g = Port::<Input, usize>::new("input_g");
-        let input_p = Port::<Input, (usize, f64)>::new("input_p");
-        let output = Port::<Output, bool>::new("output");
-        component.add_in_port(&input_g);
-        component.add_in_port(&input_p);
-        component.add_out_port(&output);
+        let input_g = component.add_in_port::<usize>("input_g");
+        let input_p = component.add_in_port::<(usize, f64)>("input_p");
+        let output = component.add_out_port::<bool>("output");
         Self {
             sigma: time,
             input_g,
@@ -154,17 +147,14 @@ struct ExperimentalFrame {
 impl ExperimentalFrame {
     fn new(name: &str, period: f64, observation: f64) -> Self {
         let mut coupled = Coupled::new(name);
-        let input = Port::<Input, (usize, f64)>::new("input");
-        let output = Port::<Output, usize>::new("output");
-
-        coupled.add_in_port(&input);
-        coupled.add_out_port(&output);
+        coupled.add_in_port::<(usize, f64)>("input");
+        coupled.add_out_port::<usize>("output");
 
         let generator = Generator::new("generator", period);
         let transducer = Transducer::new("transducer", observation);
 
-        coupled.add_component(generator);
-        coupled.add_component(transducer);
+        coupled.add_component(Box::new(generator));
+        coupled.add_component(Box::new(transducer));
 
         coupled.add_eic("input", "transducer", "input_p");
         coupled.add_ic("generator", "output", "transducer", "input_g");
@@ -181,9 +171,9 @@ fn create_gpt(period: f64, time: f64, observation: f64) -> Coupled {
     let transducer = Transducer::new("transducer", observation);
 
     let mut gpt = Coupled::new("gpt");
-    gpt.add_component(generator);
-    gpt.add_component(processor);
-    gpt.add_component(transducer);
+    gpt.add_component(Box::new(generator));
+    gpt.add_component(Box::new(processor));
+    gpt.add_component(Box::new(transducer));
 
     gpt.add_ic("generator", "output", "processor", "input");
     gpt.add_ic("generator", "output", "transducer", "input_g");
@@ -199,8 +189,8 @@ fn create_efp(period: f64, time: f64, observation: f64) -> Coupled {
     let ef = ExperimentalFrame::new("ef", period, observation);
     let processor = Processor::new("processor", time);
 
-    efp.add_component(ef.coupled);
-    efp.add_component(processor);
+    efp.add_component(Box::new(ef.coupled));
+    efp.add_component(Box::new(processor));
 
     efp.add_ic("ef", "output", "processor", "input");
     efp.add_ic("processor", "output", "ef", "input");

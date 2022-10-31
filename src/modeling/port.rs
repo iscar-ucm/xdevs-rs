@@ -1,3 +1,4 @@
+use super::Component;
 use std::any::{type_name, Any};
 use std::cell::RefCell;
 use std::fmt::{Debug, Display, Formatter, Result};
@@ -12,6 +13,9 @@ pub(crate) trait AbstractPort: Any + Debug + Display {
 
     /// Returns the name of the port.
     fn get_name(&self) -> &str;
+
+    /// Returns pointer to parent component of the port.
+    fn get_parent(&self) -> *const Component;
 
     /// Returns `true` if the port does not contain any value.
     fn is_empty(&self) -> bool;
@@ -31,16 +35,19 @@ pub(crate) trait AbstractPort: Any + Debug + Display {
 pub(crate) struct TypedPort<T> {
     /// Name of the port.
     name: String,
+    /// Pointer to parent component of the port.
+    parent: *const Component,
     /// Message bag.
-    bag: RefCell<Vec<T>>,
+    pub(crate) bag: Rc<RefCell<Vec<T>>>,
 }
 
 impl<T> TypedPort<T> {
     /// Constructor function.
-    pub fn new(name: &str) -> Self {
+    pub fn new(name: &str, parent: *const Component) -> Self {
         Self {
             name: name.to_string(),
-            bag: RefCell::new(Vec::new()),
+            parent,
+            bag: Rc::new(RefCell::new(Vec::new())),
         }
     }
 
@@ -106,6 +113,10 @@ impl<T: 'static + Clone + Debug> AbstractPort for TypedPort<T> {
         &self.name
     }
 
+    fn get_parent(&self) -> *const Component {
+        self.parent
+    }
+
     fn is_empty(&self) -> bool {
         self.bag.borrow().is_empty()
     }
@@ -138,8 +149,8 @@ pub struct Output();
 pub struct Port<D, T>(pub(crate) Rc<TypedPort<T>>, PhantomData<D>);
 
 impl<D, T> Port<D, T> {
-    pub fn new(name: &str) -> Self {
-        Self(Rc::new(TypedPort::<T>::new(name)), PhantomData::default())
+    pub(crate) fn new(port: Rc<TypedPort<T>>) -> Self {
+        Self(port, PhantomData::default())
     }
     pub fn get_name(&self) -> &str {
         &self.0.name
@@ -178,7 +189,7 @@ mod tests {
 
     #[test]
     fn test_port() {
-        let port_a = TypedPort::new("port_a");
+        let port_a = TypedPort::new("port_a", std::ptr::null());
         assert_eq!("port_a", port_a.get_name());
         assert_eq!("port_a<usize>", port_a.to_string());
         assert!(port_a.is_empty());
@@ -209,7 +220,7 @@ mod tests {
 
     #[test]
     fn test_port_trait() {
-        let port_a = TypedPort::<i32>::new("port_a");
+        let port_a = TypedPort::<i32>::new("port_a", std::ptr::null());
 
         assert!(TypedPort::<i32>::is_compatible(&port_a));
         assert!(!TypedPort::<i64>::is_compatible(&port_a));
@@ -220,14 +231,14 @@ mod tests {
     #[test]
     #[should_panic(expected = "port port_a<i32> is incompatible with value type i64")]
     fn test_port_upgrade_panics() {
-        let port_a = TypedPort::<i32>::new("port_a");
+        let port_a = TypedPort::<i32>::new("port_a", std::ptr::null());
         TypedPort::<i64>::upgrade(&port_a);
     }
 
     #[test]
     fn test_propagate() {
-        let port_a = TypedPort::new("port_a");
-        let port_b = TypedPort::new("port_b");
+        let port_a = TypedPort::new("port_a", std::ptr::null());
+        let port_b = TypedPort::new("port_b", std::ptr::null());
 
         for i in 0..10 {
             port_a.add_value(i);

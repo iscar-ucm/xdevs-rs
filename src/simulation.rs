@@ -108,7 +108,7 @@ impl Simulator for Coupled {
 
     fn start(&mut self, t_start: f64) {
         let mut t_next = f64::INFINITY;
-        for component in self.components.values_mut() {
+        for component in self.comps_vec.iter_mut() {
             component.start(t_start);
             let t = component.get_t_next();
             if t < t_next {
@@ -119,35 +119,29 @@ impl Simulator for Coupled {
     }
 
     fn stop(&mut self, t_stop: f64) {
-        self.components.values_mut().for_each(|c| c.stop(t_stop));
+        self.comps_vec.iter_mut().for_each(|c| c.stop(t_stop));
         self.set_sim_t(t_stop, f64::INFINITY);
     }
 
     fn collection(&mut self, t: f64) {
         if t >= self.get_t_next() {
-            self.components.values_mut().for_each(|c| c.collection(t));
-            for (port_to, ports_from) in self.ic.iter() {
-                ports_from
-                    .iter()
-                    .for_each(|port_from| port_to.propagate(&**port_from))
-            }
-            for (port_to, ports_from) in self.eoc.iter() {
-                ports_from
-                    .iter()
-                    .for_each(|port_from| port_to.propagate(&**port_from))
-            }
+            self.comps_vec.iter_mut().for_each(|c| c.collection(t));
+            self.ic_vec
+                .iter()
+                .for_each(|(port_from, port_to)| port_to.propagate(&**port_from));
+            self.eoc_vec
+                .iter()
+                .for_each(|(port_from, port_to)| port_to.propagate(&**port_from));
         }
     }
 
     fn transition(&mut self, t: f64) {
-        for (port_to, ports_from) in self.eic.iter() {
-            ports_from
-                .iter()
-                .for_each(|port_from| port_to.propagate(&**port_from))
-        }
-        self.components.values_mut().for_each(|c| c.transition(t));
+        self.eic_vec
+            .iter()
+            .for_each(|(port_from, port_to)| port_to.propagate(&**port_from));
         let mut next_t = f64::INFINITY;
-        for component in self.components.values() {
+        for component in self.comps_vec.iter_mut() {
+            component.transition(t);
             let t = component.get_t_next();
             if t < next_t {
                 next_t = t;
@@ -157,7 +151,7 @@ impl Simulator for Coupled {
     }
 
     fn clear_ports(&mut self) {
-        self.components.values_mut().for_each(|c| c.clear_ports());
+        self.comps_vec.iter_mut().for_each(|c| c.clear_ports());
         self.component.clear_output();
         self.component.clear_input()
     }

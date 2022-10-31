@@ -6,6 +6,7 @@ use std::fmt::{Debug, Display, Formatter, Result};
 use std::rc::Rc;
 
 type CouplingsMap = HashMap<RcHash<dyn AbstractPort>, HashSet<RcHash<dyn AbstractPort>>>;
+type CouplingsVec = Vec<(Rc<dyn AbstractPort>, Rc<dyn AbstractPort>)>;
 
 /// Coupled DEVS model.
 #[derive(Debug)]
@@ -13,13 +14,18 @@ pub struct Coupled {
     /// Component wrapped by the coupled model.
     pub(crate) component: Component,
     /// Components set of the DEVS coupled model.
-    pub(crate) components: HashMap<String, Box<dyn Simulator>>,
+    comps_map: HashMap<String, usize>,
     /// External input couplings.
-    pub(crate) eic: CouplingsMap,
+    eic_map: CouplingsMap,
     /// Internal couplings.
-    pub(crate) ic: CouplingsMap,
+    ic_map: CouplingsMap,
     /// External output couplings.
-    pub(crate) eoc: CouplingsMap,
+    eoc_map: CouplingsMap,
+    /// Components of the DEVS coupled model.
+    pub(crate) comps_vec: Vec<Box<dyn Simulator>>,
+    pub(crate) eic_vec: CouplingsVec,
+    pub(crate) ic_vec: CouplingsVec,
+    pub(crate) eoc_vec: CouplingsVec,
 }
 
 impl Coupled {
@@ -27,38 +33,46 @@ impl Coupled {
     pub fn new(name: &str) -> Self {
         Self {
             component: Component::new(name),
-            components: HashMap::new(),
-            eic: HashMap::new(),
-            ic: HashMap::new(),
-            eoc: HashMap::new(),
+            comps_map: HashMap::new(),
+            eic_map: HashMap::new(),
+            ic_map: HashMap::new(),
+            eoc_map: HashMap::new(),
+            comps_vec: Vec::new(),
+            eic_vec: Vec::new(),
+            ic_vec: Vec::new(),
+            eoc_vec: Vec::new(),
         }
     }
 
     /// Returns false if coupling was already defined
     fn add_coupling(
-        couplings: &mut CouplingsMap,
+        coup_map: &mut CouplingsMap,
+        coup_vec: &mut CouplingsVec,
         port_from: Rc<dyn AbstractPort>,
         port_to: Rc<dyn AbstractPort>,
-    ) -> bool {
+    ) {
         if !port_from.is_compatible(&*port_to) {
-            panic!("ports {} and {} are incompatible", port_from, port_to);
+            panic!("ports are incompatible");
         }
-        let ports_from = couplings
+        let ports_from = coup_map
             .entry(RcHash(port_to.clone()))
             .or_insert_with(HashSet::new);
-        ports_from.insert(RcHash(port_from.clone()))
+        if !ports_from.insert(RcHash(port_from.clone())) {
+            panic!("duplicate coupling");
+        }
+        coup_vec.push((port_from.clone(), port_to.clone()));
     }
 
     /// Adds a new input port of type [`Port<T>`] to the component and returns a reference to it.
     /// It panics if there is already an input port with the same name.
-    pub fn add_in_port<T: 'static + Clone + Debug>(&mut self, port: &Port<Input, T>) {
-        self.component.add_in_port(port);
+    pub fn add_in_port<T: 'static + Clone + Debug>(&mut self, name: &str) -> Port<Input, T> {
+        self.component.add_in_port::<T>(name)
     }
 
     /// Adds a new output port of type [`Port<T>`] to the component and returns a reference to it.
     /// It panics if there is already an output port with the same name.
-    pub fn add_out_port<T: 'static + Clone + Debug>(&mut self, port: &Port<Output, T>) {
-        self.component.add_out_port(port);
+    pub fn add_out_port<T: 'static + Clone + Debug>(&mut self, name: &str) -> Port<Output, T> {
+        self.component.add_out_port::<T>(name)
     }
 
     /// Adds a new component to the coupled model.
@@ -69,31 +83,30 @@ impl Coupled {
     /// use xdevs::modeling::Coupled;
     ///
     /// let mut top_coupled = Coupled::new("top_coupled");
-    /// top_coupled.add_component(Coupled::new("component"));
-    /// // top_coupled.add_component(Coupled::new("component"));  // this panics (duplicate name)
+    /// let component = Box::new(Coupled::new("component"));
+    /// top_coupled.add_component(component);
     /// ```
-    pub fn add_component<T: 'static + Simulator>(&mut self, component: T) {
+    pub fn add_component<T: 'static + Simulator>(&mut self, component: Box<T>) {
         let component_name = component.get_name();
-        if self.components.contains_key(component_name) {
-            panic!(
-                "coupled model {} already contains component with name {}",
-                self.component, component_name
-            )
+        if self.comps_map.contains_key(component_name) {
+            panic!("coupled model already contains component with the name provided")
         }
-        self.components
-            .insert(component_name.to_string(), Box::new(component));
+        self.comps_map
+            .insert(component_name.to_string(), self.comps_vec.len());
+        self.comps_vec.push(component);
     }
 
     /// Returns a dynamic reference to a component with the provided name.
     /// If the coupled model does not contain any model with that name, it panics.
-    fn get_component(&self, component_name: &str) -> &Box<dyn Simulator> {
-        self.components.get(component_name).unwrap_or_else(|| {
-            panic!(
-                "coupled model {} does not contain component with name {}",
-                self.get_name(),
-                component_name
+    fn get_component(&self, name: &str) -> &Box<dyn Simulator> {
+        self.comps_vec
+            .get(
+                *self
+                    .comps_map
+                    .get(name)
+                    .expect("coupled model does not contain component with the name provided"),
             )
-        })
+            .unwrap()
     }
 
     /// Adds a new EIC to the model.
@@ -107,14 +120,9 @@ impl Coupled {
     /// - coupling already exist.
     pub fn add_eic(&mut self, port_from_name: &str, component_to_name: &str, port_to_name: &str) {
         let port_from = self.component.get_in_port(port_from_name);
-        let component = self.get_component(component_to_name);
-        let port_to = component.get_component().get_in_port(port_to_name);
-        if !Self::add_coupling(&mut self.eic, port_from, port_to) {
-            panic!(
-                "EIC coupling {}->{}::{} is already defined",
-                port_from_name, component_to_name, port_to_name
-            )
-        }
+        let component = self.get_component(component_to_name).get_component();
+        let port_to = component.get_in_port(port_to_name);
+        Self::add_coupling(&mut self.eic_map, &mut self.eic_vec, port_from, port_to);
     }
 
     /// Adds a new IC to the model.
@@ -136,14 +144,9 @@ impl Coupled {
     ) {
         let component_from = self.get_component(component_from_name).get_component();
         let port_from = component_from.get_out_port(port_from_name);
-        let component_to = self.get_component(component_to_name);
-        let port_to = component_to.get_component().get_in_port(port_to_name);
-        if !Self::add_coupling(&mut self.ic, port_from, port_to) {
-            panic!(
-                "IC coupling {}::{}->{}::{} is already defined",
-                component_from_name, port_from_name, component_to_name, port_to_name
-            );
-        }
+        let component_to = self.get_component(component_to_name).get_component();
+        let port_to = component_to.get_in_port(port_to_name);
+        Self::add_coupling(&mut self.ic_map, &mut self.ic_vec, port_from, port_to);
     }
 
     /// Adds a new EOC to the model.
@@ -159,12 +162,7 @@ impl Coupled {
         let component = self.get_component(component_from_name).get_component();
         let port_from = component.get_out_port(port_from_name);
         let port_to = self.component.get_out_port(port_to_name);
-        if !Self::add_coupling(&mut self.eoc, port_from, port_to) {
-            panic!(
-                "EOC coupling <{}::{}->{}> is already defined",
-                component_from_name, port_from_name, port_to_name
-            );
-        }
+        Self::add_coupling(&mut self.eoc_map, &mut self.eoc_vec, port_from, port_to);
     }
 }
 
@@ -179,22 +177,18 @@ mod tests {
     use super::*;
 
     #[test]
-    #[should_panic(
-        expected = "coupled model top_coupled already contains component with name component"
-    )]
+    #[should_panic(expected = "coupled model already contains component with the name provided")]
     fn test_duplicate_component() {
         let mut top_coupled = Coupled::new("top_coupled");
-        top_coupled.add_component(Coupled::new("component"));
-        top_coupled.add_component(Coupled::new("component"));
+        top_coupled.add_component(Box::new(Coupled::new("component")));
+        top_coupled.add_component(Box::new(Coupled::new("component")));
     }
 
     #[test]
-    #[should_panic(
-        expected = "coupled model top_coupled does not contain component with name component_2"
-    )]
+    #[should_panic(expected = "coupled model does not contain component with the name provided")]
     fn test_get_component() {
         let mut top_coupled = Coupled::new("top_coupled");
-        top_coupled.add_component(Coupled::new("component_1"));
+        top_coupled.add_component(Box::new(Coupled::new("component_1")));
         assert_eq!(
             "component_1",
             top_coupled.get_component("component_1").get_name()
@@ -214,13 +208,10 @@ mod tests {
     }
 
     #[test]
-    #[should_panic(
-        expected = "coupled model top_coupled does not contain component with name bad_component"
-    )]
+    #[should_panic(expected = "coupled model does not contain component with the name provided")]
     fn test_eic_bad_component_to() {
         let mut top_coupled = Coupled::new("top_coupled");
-        let port: Port<Input, i32> = Port::new("input");
-        top_coupled.add_in_port(&port);
+        top_coupled.add_in_port::<i32>("input");
         top_coupled.add_eic("input", "bad_component", "bad_output");
     }
 
@@ -228,35 +219,30 @@ mod tests {
     #[should_panic(expected = "component does not contain input port with the name provided")]
     fn test_eic_bad_port_to() {
         let mut top_coupled = Coupled::new("top_coupled");
-        let port: Port<Input, i32> = Port::new("input");
-        top_coupled.add_in_port(&port);
-        top_coupled.add_component(Coupled::new("component"));
+        top_coupled.add_in_port::<i32>("input");
+        top_coupled.add_component(Box::new(Coupled::new("component")));
         top_coupled.add_eic("input", "component", "bad_output");
     }
 
     #[test]
-    #[should_panic(expected = "ports input<i32> and input<i64> are incompatible")]
+    #[should_panic(expected = "ports are incompatible")]
     fn test_eic_bad_types() {
         let mut top_coupled = Coupled::new("top_coupled");
-        let port: Port<Input, i32> = Port::new("input");
-        top_coupled.add_in_port(&port);
+        top_coupled.add_in_port::<i32>("input");
         let mut component = Coupled::new("component");
-        let port: Port<Input, i64> = Port::new("input");
-        component.add_in_port(&port);
-        top_coupled.add_component(component);
+        component.add_in_port::<i64>("input");
+        top_coupled.add_component(Box::new(component));
         top_coupled.add_eic("input", "component", "input");
     }
 
     #[test]
-    #[should_panic(expected = "EIC coupling input->component::input is already defined")]
+    #[should_panic(expected = "duplicate coupling")]
     fn test_eic() {
         let mut top_coupled = Coupled::new("top_coupled");
-        let port: Port<Input, i32> = Port::new("input");
-        top_coupled.add_in_port(&port);
+        top_coupled.add_in_port::<i32>("input");
         let mut component = Coupled::new("component");
-        let port: Port<Input, i32> = Port::new("input");
-        component.add_in_port(&port);
-        top_coupled.add_component(component);
+        component.add_in_port::<i32>("input");
+        top_coupled.add_component(Box::new(component));
         top_coupled.add_eic("input", "component", "input");
         top_coupled.add_eic("input", "component", "input");
     }

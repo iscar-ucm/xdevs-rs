@@ -1,4 +1,5 @@
 use super::port::{AbstractPort, Input, Output, Port};
+use crate::modeling::port::TypedPort;
 use std::collections::HashMap;
 use std::fmt::{Debug, Display, Formatter, Result};
 use std::rc::Rc;
@@ -59,24 +60,26 @@ impl Component {
 
     /// Adds a new input port of type [`Port<T>`] to the component and returns a reference to it.
     /// It panics if there is already an input port with the same name.
-    pub fn add_in_port<T: 'static + Clone + Debug>(&mut self, port: &Port<Input, T>) {
-        if self.input_map.contains_key(port.get_name()) {
+    pub fn add_in_port<T: 'static + Clone + Debug>(&mut self, name: &str) -> Port<Input, T> {
+        if self.input_map.contains_key(name) {
             panic!("component already contains input port with the name provided");
         }
-        self.input_map
-            .insert(port.get_name().to_string(), port.0.clone());
-        self.input_vec.push(port.0.clone());
+        let port = Rc::new(TypedPort::<T>::new(name, self));
+        self.input_map.insert(name.to_string(), port.clone());
+        self.input_vec.push(port.clone());
+        Port::<Input, T>::new(port)
     }
 
     /// Adds a new output port of type [`Port<T>`] to the component and returns a reference to it.
     /// It panics if there is already an output port with the same name.
-    pub fn add_out_port<T: 'static + Clone + Debug>(&mut self, port: &Port<Output, T>) {
-        if self.output_map.contains_key(port.get_name()) {
+    pub fn add_out_port<T: 'static + Clone + Debug>(&mut self, name: &str) -> Port<Output, T> {
+        if self.output_map.contains_key(name) {
             panic!("component already contains output port with the name provided");
         }
-        self.output_map
-            .insert(port.get_name().to_string(), port.0.clone());
-        self.output_vec.push(port.0.clone());
+        let port = Rc::new(TypedPort::<T>::new(name, self));
+        self.output_map.insert(name.to_string(), port.clone());
+        self.output_vec.push(port.clone());
+        Port::<Output, T>::new(port)
     }
 
     /// Returns true if all the input ports of the model are empty.
@@ -148,34 +151,28 @@ mod tests {
     #[should_panic(expected = "component already contains input port with the name provided")]
     fn test_duplicate_in_port() {
         let mut a = Component::new("component_a");
-        let port: Port<Input, i32> = Port::new("i32");
-        a.add_in_port(&port);
+        a.add_in_port::<i32>("i32");
         assert_eq!(1, a.input_map.len());
         assert_eq!(0, a.output_map.len());
-        let port: Port<Input, i32> = Port::new("i32");
-        a.add_in_port(&port);
+        a.add_in_port::<i32>("i32");
     }
 
     #[test]
     #[should_panic(expected = "component already contains output port with the name provided")]
     fn test_duplicate_out_port() {
         let mut a = Component::new("component_a");
-        let port = Port::<Output, i32>::new("i32");
-        a.add_out_port(&port);
+        a.add_out_port::<i32>("i32");
         assert_eq!(0, a.input_map.len());
         assert_eq!(1, a.output_map.len());
-        a.add_out_port(&port);
+        a.add_out_port::<i32>("i32");
     }
 
     #[test]
     fn test_component() {
         let mut a = Component::new("component_a");
-        let in_i32: Port<Input, i32> = Port::new("i32");
-        let out_i32: Port<Output, i32> = Port::new("i32");
-        let out_f64: Port<Output, f64> = Port::new("f64");
-        a.add_in_port(&in_i32);
-        a.add_out_port(&out_i32);
-        a.add_out_port(&out_f64);
+        let in_i32 = a.add_in_port::<i32>("i32");
+        let out_i32 = a.add_out_port::<i32>("i32");
+        let out_f64 = a.add_out_port::<f64>("f64");
 
         assert_eq!("component_a", a.name);
         assert_eq!(1, a.input_map.len());
