@@ -4,34 +4,34 @@ use crate::*;
 use std::cell::RefCell;
 
 #[derive(Debug)]
-pub struct HI {
+pub struct LI {
     pub coupled: Coupled,
 }
 
-impl HI {
-    pub fn new(width: usize, depth: usize) -> Coupled {
-        let mut coupled = Coupled::new("HI");
+impl LI {
+    pub fn create(width: usize, depth: usize) -> Coupled {
+        let mut coupled = Coupled::new("LI");
         let seeder = DEVStoneSeeder::new("seeder");
-        let hi = Self::new_hi(width, depth, None);
-        let hi_name = hi.coupled.component.get_name().to_string();
+        let li = Self::new(width, depth, None);
+        let li_name = li.coupled.component.get_name().to_string();
         coupled.add_component(Box::new(seeder));
-        coupled.add_component(Box::new(hi.coupled));
-        coupled.add_ic("seeder", "output", &hi_name, "input");
+        coupled.add_component(Box::new(li.coupled));
+        coupled.add_ic("seeder", "output", &li_name, "input");
         coupled
     }
 
-    fn new_test(width: usize, depth: usize, probe: Rc<RefCell<TestProbe>>) -> Coupled {
-        let mut coupled = Coupled::new("HI");
+    fn _create_test(width: usize, depth: usize, probe: Rc<RefCell<TestProbe>>) -> Coupled {
+        let mut coupled = Coupled::new("LI");
         let seeder = DEVStoneSeeder::new("seeder");
-        let hi = Self::new_hi(width, depth, Some(probe));
-        let hi_name = hi.coupled.component.get_name().to_string();
+        let li = Self::new(width, depth, Some(probe));
+        let li_name = li.coupled.component.get_name().to_string();
         coupled.add_component(Box::new(seeder));
-        coupled.add_component(Box::new(hi.coupled));
-        coupled.add_ic("seeder", "output", &hi_name, "input");
+        coupled.add_component(Box::new(li.coupled));
+        coupled.add_ic("seeder", "output", &li_name, "input");
         coupled
     }
 
-    fn new_hi(width: usize, depth: usize, probe: Option<Rc<RefCell<TestProbe>>>) -> Self {
+    fn new(width: usize, depth: usize, probe: Option<Rc<RefCell<TestProbe>>>) -> Self {
         // First we check the input parameters
         if width < 1 {
             panic!("width must be greater than 1")
@@ -52,7 +52,7 @@ impl HI {
             coupled.add_eoc("inner_atomic", "output", "output");
         // Otherwise, we add a subcoupled and a set of atomics.
         } else {
-            let subcoupled = Self::new_hi(width, depth - 1, probe.clone());
+            let subcoupled = Self::new(width, depth - 1, probe.clone());
             let subcoupled_name = subcoupled.coupled.component.get_name().to_string();
             coupled.add_component(Box::new(subcoupled.coupled));
             coupled.add_eic("input", &subcoupled_name, "input");
@@ -88,11 +88,11 @@ mod tests {
     }
 
     #[test]
-    fn test_hi() {
+    fn test_li() {
         for width in (1..50).step_by(5) {
             for depth in (1..50).step_by(5) {
                 let probe = Rc::new(RefCell::new(TestProbe::new()));
-                let coupled = HI::new_test(width, depth, probe.clone());
+                let coupled = LI::_create_test(width, depth, probe.clone());
                 assert_eq!(expected_atomics(width, depth), probe.borrow().n_atomics);
                 assert_eq!(expected_eics(width, depth), probe.borrow().n_eics);
                 assert_eq!(0, probe.borrow().n_ics);

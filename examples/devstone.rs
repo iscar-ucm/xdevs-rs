@@ -20,8 +20,8 @@ fn main() {
         .expect("depth could not be parsed");
 
     let mut coupled: Coupled;
-    if model_type == "HI" {
-        coupled = HI::new(width, depth);
+    if model_type == "LI" {
+        coupled = LI::create(width, depth);
     } else {
         panic!()
     }
