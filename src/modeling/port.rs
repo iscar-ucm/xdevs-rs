@@ -6,8 +6,8 @@ use std::marker::PhantomData;
 use std::ops::Deref;
 use std::rc::Rc;
 
-/// Interface for DEVS ports. This trait does not consider message types.
-pub(crate) trait AbstractPort: Any + Debug + Display {
+/// Abstract DEVS ports. This trait does not consider message types nor port directions.
+pub(crate) trait AbstractPort: Debug + Display {
     /// Port-to-any conversion.
     fn as_any(&self) -> &dyn Any;
 
@@ -23,7 +23,7 @@ pub(crate) trait AbstractPort: Any + Debug + Display {
     /// It clears all the values in the port.
     fn clear(&self);
 
-    /// Checks if one port is compatible with other.
+    /// Checks if the port is compatible with other.
     fn is_compatible(&self, other: &dyn AbstractPort) -> bool;
 
     /// Propagates values from other port to the port.
@@ -43,7 +43,7 @@ pub(crate) struct TypedPort<T> {
 
 impl<T> TypedPort<T> {
     /// Constructor function.
-    pub fn new(name: &str, parent: *const Component) -> Self {
+    pub(crate) fn new(name: &str, parent: *const Component) -> Self {
         Self {
             name: name.to_string(),
             parent,
@@ -52,47 +52,42 @@ impl<T> TypedPort<T> {
     }
 
     /// It checks if the message bag of the port is empty.
-    pub fn is_empty(&self) -> bool {
+    pub(crate) fn is_empty(&self) -> bool {
         self.bag.borrow().is_empty()
     }
 
     /// It returns a reference to the message bag of the port.
-    pub fn get_values(&self) -> impl Deref<Target = Vec<T>> + '_ {
+    pub(crate) fn get_values(&self) -> impl Deref<Target = Vec<T>> + '_ {
         self.bag.borrow()
     }
 
     /// It adds a new value to the message bag of the port.
-    pub fn add_value(&self, value: T) {
+    pub(crate) fn add_value(&self, value: T) {
         self.bag.borrow_mut().push(value);
     }
 }
 
 impl<T: Clone> TypedPort<T> {
     /// It adds multiple values to the message bag of the port.
-    pub fn add_values(&self, values: &[T]) {
+    pub(crate) fn add_values(&self, values: &[T]) {
         self.bag.borrow_mut().extend_from_slice(values);
     }
 }
 
 impl<T: 'static> TypedPort<T> {
-    /// Tries to convert a trait object [`AsPort`] to a reference to [`Port<T>`].
+    /// Tries to convert a trait object [`AbstractPort`] to a reference to [`TypedPort<T>`].
     pub(crate) fn try_upgrade(port: &dyn AbstractPort) -> Option<&TypedPort<T>> {
         port.as_any().downcast_ref::<TypedPort<T>>()
     }
 
-    /// Converts a trait object [`AsPort`] to a reference to [`Port<T>`].
+    /// Converts a trait object [`AbstractPort`] to a reference to [`TypedPort<T>`].
     /// It panics if this conversion is not possible.
     pub(crate) fn upgrade(port: &dyn AbstractPort) -> &TypedPort<T> {
-        TypedPort::<T>::try_upgrade(port).unwrap_or_else(|| {
-            panic!(
-                "port {} is incompatible with value type {}",
-                port,
-                type_name::<T>()
-            )
-        })
+        TypedPort::<T>::try_upgrade(port)
+            .unwrap_or_else(|| panic!("port is incompatible with value type"))
     }
 
-    /// Checks if a trait object [`AsPort`] can be upgraded to a reference to [`Port<T>`].
+    /// Checks if a trait object [`AbstractPort`] can be upgraded to [`typedPort<T>`].
     pub(crate) fn is_compatible(port: &dyn AbstractPort) -> bool {
         TypedPort::<T>::try_upgrade(port).is_some()
     }
@@ -136,9 +131,11 @@ impl<T: 'static + Clone + Debug> AbstractPort for TypedPort<T> {
     }
 }
 
+/// Phantom struct for marking ports as input.
 #[derive(Clone, Copy, Debug)]
 pub struct Input();
 
+/// Phantom struct for marking ports as output.
 #[derive(Clone, Copy, Debug)]
 pub struct Output();
 
@@ -152,8 +149,13 @@ impl<D, T> Port<D, T> {
     pub(crate) fn new(port: Rc<TypedPort<T>>) -> Self {
         Self(port, PhantomData::default())
     }
+
     pub fn get_name(&self) -> &str {
         &self.0.name
+    }
+
+    pub fn get_parent(&self) -> *const Component {
+        self.0.parent
     }
 }
 
@@ -177,7 +179,6 @@ impl<T> Port<Output, T> {
 }
 
 impl<T: Clone> Port<Output, T> {
-    /// It adds a new value to the message bag of the port.
     pub fn add_values(&self, value: &[T]) {
         self.0.add_values(value);
     }
@@ -229,7 +230,7 @@ mod tests {
     }
 
     #[test]
-    #[should_panic(expected = "port port_a<i32> is incompatible with value type i64")]
+    #[should_panic(expected = "port is incompatible with value type")]
     fn test_port_upgrade_panics() {
         let port_a = TypedPort::<i32>::new("port_a", std::ptr::null());
         TypedPort::<i64>::upgrade(&port_a);

@@ -1,5 +1,6 @@
+use xdevs::impl_atomic;
 use xdevs::modeling::*;
-use xdevs::*;
+use xdevs::simulation::*;
 
 #[derive(Debug)]
 struct Generator {

@@ -1,9 +1,6 @@
 pub mod modeling;
 pub mod simulation;
 
-pub use modeling::{Input, Output, Port};
-pub use simulation::{RootCoordinator, Simulator};
-
 use std::fmt::{Display, Formatter, Result};
 use std::hash::{Hash, Hasher};
 use std::ops::Deref;

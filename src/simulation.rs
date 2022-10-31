@@ -87,7 +87,7 @@ impl<T: Atomic> Simulator for T {
             return;
         }
         let ta = self.ta();
-        self.set_sim_t(t, t + ta)
+        self.set_sim_t(t, t + ta);
     }
 
     fn clear_ports(&mut self) {

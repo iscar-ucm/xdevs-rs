@@ -4,12 +4,12 @@ use std::collections::HashMap;
 use std::fmt::{Debug, Display, Formatter, Result};
 use std::rc::Rc;
 
-/// Generic DEVS component. Models must comprise a ['Component'] to fulfill the [`Simulator`] trait.
+/// Generic DEVS component. Models must comprise a ['Component'] to fulfill the [`crate::simulation::Simulator`] trait.
 #[derive(Debug)]
 pub struct Component {
     /// name of the DEVS component.
     name: String,
-    /// Time for the last component state transition.
+    /// Time of the last component state transition.
     t_last: f64,
     /// Time for the next component state transition.
     t_next: f64,
@@ -58,7 +58,7 @@ impl Component {
         self.t_next = t_next;
     }
 
-    /// Adds a new input port of type [`Port<T>`] to the component and returns a reference to it.
+    /// Adds a new input port of type [`Port<Input, T>`] and returns a reference to it.
     /// It panics if there is already an input port with the same name.
     pub fn add_in_port<T: 'static + Clone + Debug>(&mut self, name: &str) -> Port<Input, T> {
         if self.input_map.contains_key(name) {
@@ -70,7 +70,7 @@ impl Component {
         Port::<Input, T>::new(port)
     }
 
-    /// Adds a new output port of type [`Port<T>`] to the component and returns a reference to it.
+    /// Adds a new output port of type [`Port<Output, T>`] and returns a reference to it.
     /// It panics if there is already an output port with the same name.
     pub fn add_out_port<T: 'static + Clone + Debug>(&mut self, name: &str) -> Port<Output, T> {
         if self.output_map.contains_key(name) {

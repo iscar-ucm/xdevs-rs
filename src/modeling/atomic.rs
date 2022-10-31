@@ -29,65 +29,45 @@ pub trait Atomic: Debug {
 
     /// Confluent transition function of the atomic DEVS model.
     /// By default, it first triggers [`Atomic::delta_int`].
-    /// Then, it triggers [`Atomic::delta_ext`] with elapsed time 0.
+    /// Then, it triggers [`Atomic::delta_ext`] with the elapsed time set to 0.
     fn delta_conf(&mut self) {
         self.delta_int();
         self.delta_ext(0.);
     }
 }
 
-/*
-pub fn start<T: AtomicModel + Simulator>(this: &mut T, t_start: f64) {
-    let ta = this.ta();
-    this.set_sim_t(t_start, t_start + ta);
-}
-
-pub fn stop<T: AtomicModel + Simulator>(this: &mut T, t_stop: f64) {
-    this.set_sim_t(t_stop, f64::INFINITY);
-}
-
-pub fn collection<T: AtomicModel + Simulator>(this: &mut T, t: f64) {
-    if t >= this.get_t_next() {
-        this.lambda();
-    }
-}
-
-pub fn transition<T: AtomicModel + Simulator>(this: &mut T, t: f64) {
-    let t_next = this.get_t_next();
-    if !this.get_component().is_input_empty() {
-        if t == t_next {
-            this.delta_conf();
-        } else {
-            let e = t - this.get_time();
-            this.delta_ext(e);
-        }
-    } else if t == t_next {
-        this.delta_int();
-    } else {
-        return;
-    }
-    let ta = this.ta();
-    this.set_sim_t(t, t + ta)
-}
-
-pub fn clear_ports<T: AtomicModel + Simulator>(this: &mut T) {
-    this.get_component_mut().clear_ports();
-}
- */
-
-/// Helper macro to implement the [`Atomic`] trait.
+/// Helper macro to implement the [`Atomic`] trait using features from its inner [`Component`].
+/// To implement the [`Atomic`] trait for your struct `MyAtomic`, call `impl_atomic!(MyAtomic)`.
+/// You must ensure the following conditions:
+/// - `MyAtomic` has a field `component` of type [`Component`].
+/// - `MyAtomic` has the following methods:
+///     - `lambda(&self)` (i.e., output function).
+///     - `delta_int(&mut self)` (i.e., internal transition function).
+///     - `delta_ext(&mut self, e: f64)` (i.e., external transition function).
+///     - `ta(&self)` (i.e., time advance function).
+/// Currently, the confluent transition function can only be the default.
 #[macro_export]
 macro_rules! impl_atomic {
-    ($($ATOMIC:ident),+) => {
-        $(
-            impl $crate::modeling::atomic::Atomic for $ATOMIC {
-                fn get_component(&self) -> &Component { &self.component }
-                fn get_component_mut(&mut self) -> &mut Component { &mut self.component }
-                fn lambda(&self) { self.lambda(); }
-                fn delta_int(&mut self) { self.delta_int() }
-                fn delta_ext(&mut self, e: f64) { self. delta_ext(e) }
-                fn ta(&self) -> f64 { self.ta() }
+    ($ATOMIC:ident) => {
+        impl $crate::modeling::atomic::Atomic for $ATOMIC {
+            fn get_component(&self) -> &Component {
+                &self.component
             }
-        )+
-    }
+            fn get_component_mut(&mut self) -> &mut Component {
+                &mut self.component
+            }
+            fn lambda(&self) {
+                self.lambda();
+            }
+            fn delta_int(&mut self) {
+                self.delta_int()
+            }
+            fn delta_ext(&mut self, e: f64) {
+                self.delta_ext(e)
+            }
+            fn ta(&self) -> f64 {
+                self.ta()
+            }
+        }
+    };
 }

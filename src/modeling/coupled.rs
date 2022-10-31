@@ -1,11 +1,15 @@
-use crate::modeling::port::{AbstractPort, Input, Output, Port};
-use crate::modeling::Component;
-use crate::{RcHash, Simulator};
+use crate::modeling::port::AbstractPort;
+use crate::modeling::{Component, Input, Output, Port};
+use crate::simulation::Simulator;
+use crate::RcHash;
 use std::collections::{HashMap, HashSet};
 use std::fmt::{Debug, Display, Formatter, Result};
 use std::rc::Rc;
 
+/// Helper type for keeping track of couplings and avoiding duplicates.
 type CouplingsMap = HashMap<RcHash<dyn AbstractPort>, HashSet<RcHash<dyn AbstractPort>>>;
+
+/// Helper type for storing couplings in a vector as tuples (port from, port to).
 type CouplingsVec = Vec<(Rc<dyn AbstractPort>, Rc<dyn AbstractPort>)>;
 
 /// Coupled DEVS model.
@@ -13,7 +17,9 @@ type CouplingsVec = Vec<(Rc<dyn AbstractPort>, Rc<dyn AbstractPort>)>;
 pub struct Coupled {
     /// Component wrapped by the coupled model.
     pub(crate) component: Component,
-    /// Components set of the DEVS coupled model.
+    /// Set of subcomponents of the DEVS coupled model.
+    /// The key corresponds to the name of the subcomponent. It must be unique.
+    /// The value corresponds to the index of [`Coupled::comps_vec`] where the component is stored.
     comps_map: HashMap<String, usize>,
     /// External input couplings.
     eic_map: CouplingsMap,
@@ -21,10 +27,13 @@ pub struct Coupled {
     ic_map: CouplingsMap,
     /// External output couplings.
     eoc_map: CouplingsMap,
-    /// Components of the DEVS coupled model.
+    /// Components of the DEVS coupled model (serialized for better performance).
     pub(crate) comps_vec: Vec<Box<dyn Simulator>>,
+    /// External input couplings (serialized for better performance).
     pub(crate) eic_vec: CouplingsVec,
+    /// Internal couplings (serialized for better performance).
     pub(crate) ic_vec: CouplingsVec,
+    /// External output couplings (serialized for better performance).
     pub(crate) eoc_vec: CouplingsVec,
 }
 
@@ -44,7 +53,7 @@ impl Coupled {
         }
     }
 
-    /// Returns false if coupling was already defined
+    /// Helper function to add a new coupling to a coupled model.
     fn add_coupling(
         coup_map: &mut CouplingsMap,
         coup_vec: &mut CouplingsVec,
@@ -63,13 +72,13 @@ impl Coupled {
         coup_vec.push((port_from.clone(), port_to.clone()));
     }
 
-    /// Adds a new input port of type [`Port<T>`] to the component and returns a reference to it.
+    /// Adds a new input port of type [`Port<Input, T>`] and returns a reference to it.
     /// It panics if there is already an input port with the same name.
     pub fn add_in_port<T: 'static + Clone + Debug>(&mut self, name: &str) -> Port<Input, T> {
         self.component.add_in_port::<T>(name)
     }
 
-    /// Adds a new output port of type [`Port<T>`] to the component and returns a reference to it.
+    /// Adds a new output port of type [`Port<Output, T>`] and returns a reference to it.
     /// It panics if there is already an output port with the same name.
     pub fn add_out_port<T: 'static + Clone + Debug>(&mut self, name: &str) -> Port<Output, T> {
         self.component.add_out_port::<T>(name)
@@ -77,15 +86,6 @@ impl Coupled {
 
     /// Adds a new component to the coupled model.
     /// If there is already a component with the same name as the new component, it panics.
-    ///
-    /// # Examples
-    /// ```
-    /// use xdevs::modeling::Coupled;
-    ///
-    /// let mut top_coupled = Coupled::new("top_coupled");
-    /// let component = Box::new(Coupled::new("component"));
-    /// top_coupled.add_component(component);
-    /// ```
     pub fn add_component<T: 'static + Simulator>(&mut self, component: Box<T>) {
         let component_name = component.get_name();
         if self.comps_map.contains_key(component_name) {
@@ -96,7 +96,7 @@ impl Coupled {
         self.comps_vec.push(component);
     }
 
-    /// Returns a dynamic reference to a component with the provided name.
+    /// Returns a reference to a component with the provided name.
     /// If the coupled model does not contain any model with that name, it panics.
     fn get_component(&self, name: &str) -> &Box<dyn Simulator> {
         self.comps_vec
@@ -117,7 +117,7 @@ impl Coupled {
     /// - the destination component does not exist.
     /// - the destination port does not exist.
     /// - ports are not compatible.
-    /// - coupling already exist.
+    /// - coupling already exists.
     pub fn add_eic(&mut self, port_from_name: &str, component_to_name: &str, port_to_name: &str) {
         let port_from = self.component.get_in_port(port_from_name);
         let component = self.get_component(component_to_name).get_component();
@@ -134,7 +134,7 @@ impl Coupled {
     /// - the destination component does not exist.
     /// - the destination port does not exist.
     /// - ports are not compatible.
-    /// - coupling already exist.
+    /// - coupling already exists.
     pub fn add_ic(
         &mut self,
         component_from_name: &str,
@@ -157,7 +157,7 @@ impl Coupled {
     /// - the origin port does not exist.
     /// - the destination port does not exist.
     /// - ports are not compatible.
-    /// - coupling already exist.
+    /// - coupling already exists.
     pub fn add_eoc(&mut self, component_from_name: &str, port_from_name: &str, port_to_name: &str) {
         let component = self.get_component(component_from_name).get_component();
         let port_from = component.get_out_port(port_from_name);
