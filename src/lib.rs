@@ -1,7 +1,7 @@
 pub mod modeling;
 pub mod simulation;
 
-pub use modeling::{Port, IN, OUT};
+pub use modeling::{Input, Output, Port};
 pub use simulation::{RootCoordinator, Simulator};
 
 use std::fmt::{Display, Formatter, Result};

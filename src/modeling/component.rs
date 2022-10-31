@@ -1,15 +1,9 @@
-pub mod atomic;
-pub mod coupled;
-
-pub use atomic::Atomic;
-pub use coupled::Coupled;
-
-use crate::modeling::port::{Port, IN, OUT, AbstractPort, TypedPort};
+use super::port::{AbstractPort, Input, Output, Port};
 use std::collections::HashMap;
 use std::fmt::{Debug, Display, Formatter, Result};
 use std::rc::Rc;
 
-/// Generic DEVS model. Models must comprise a ['Component'] to implement the [`Simulator`] trait.
+/// Generic DEVS component. Models must comprise a ['Component'] to fulfill the [`Simulator`] trait.
 #[derive(Debug)]
 pub struct Component {
     /// name of the DEVS component.
@@ -65,35 +59,29 @@ impl Component {
 
     /// Adds a new input port of type [`Port<T>`] to the component and returns a reference to it.
     /// It panics if there is already an input port with the same name.
-    pub fn add_in_port<T: 'static + Clone + Debug>(&mut self, port_name: &str) -> Port<IN, T> {
-        let port = Self::add_port(&mut self.input_map, &mut self.input_vec, port_name).unwrap_or_else(
-            || {
-                panic!(
-                    "component {} already contains input port with name {}",
-                    self.name, port_name
-                )
-            },
-        );
-        Port::<IN, T>(port)
+    pub fn add_in_port<T: 'static + Clone + Debug>(&mut self, port: &Port<Input, T>) {
+        if self.input_map.contains_key(port.get_name()) {
+            panic!("component already contains input port with same name");
+        }
+        self.input_map
+            .insert(port.get_name().to_string(), port.0.clone());
+        self.input_vec.push(port.0.clone());
     }
 
     /// Adds a new output port of type [`Port<T>`] to the component and returns a reference to it.
     /// It panics if there is already an output port with the same name.
-    pub fn add_out_port<T: 'static + Clone + Debug>(&mut self, port_name: &str) -> Port<OUT, T> {
-        let port = Self::add_port(&mut self.output_map, &mut self.output_vec, port_name).unwrap_or_else(
-            || {
-                panic!(
-                    "component {} already contains output port with name {}",
-                    self.name, port_name
-                )
-            },
-        );
-        Port::<OUT, T>(port)
+    pub fn add_out_port<T: 'static + Clone + Debug>(&mut self, port: &Port<Output, T>) {
+        if self.output_map.contains_key(port.get_name()) {
+            panic!("component already contains input port with same name");
+        }
+        self.output_map
+            .insert(port.get_name().to_string(), port.0.clone());
+        self.output_vec.push(port.0.clone());
     }
 
     /// Returns a pointer to an input port with the given name.
     /// If the component does not have any input port with this name, it panics.
-    fn get_in_port(&self, port_name: &str) -> Rc<dyn AbstractPort> {
+    pub(crate) fn get_in_port(&self, port_name: &str) -> Rc<dyn AbstractPort> {
         self.input_map
             .get(port_name)
             .unwrap_or_else(|| {
@@ -107,7 +95,7 @@ impl Component {
 
     /// Returns a pointer to an output port with the given name.
     /// If the component does not have any output port with this name, it panics.
-    fn get_out_port(&self, port_name: &str) -> Rc<dyn AbstractPort> {
+    pub(crate) fn get_out_port(&self, port_name: &str) -> Rc<dyn AbstractPort> {
         self.output_map
             .get(port_name)
             .unwrap_or_else(|| {
@@ -119,35 +107,24 @@ impl Component {
             .clone()
     }
 
-    /// Clears all the input and output ports of the model.
-    pub(crate) fn clear_ports(&mut self) {
+    /// Clears all the input ports of the model.
+    pub(crate) fn clear_input(&mut self) {
         self.input_vec.iter().for_each(|p| p.clear());
+    }
+
+    /// Clears all the output ports of the model.
+    pub(crate) fn clear_output(&mut self) {
         self.output_vec.iter().for_each(|p| p.clear());
     }
 
     /// Returns true if all the input ports of the model are empty.
-    pub fn is_input_empty(&self) -> bool {
+    pub(crate) fn is_input_empty(&self) -> bool {
         self.input_vec.iter().all(|p| p.is_empty())
     }
 
     /// Returns true if all the output ports of the model are empty.
-    pub fn is_output_empty(&self) -> bool {
+    pub(crate) fn is_output_empty(&self) -> bool {
         self.output_vec.iter().all(|p| p.is_empty())
-    }
-
-    /// Helper function to add a port to a component regardless of whether it is input or output.
-    fn add_port<T: 'static + Clone + Debug>(
-        ports_map: &mut HashMap<String, Rc<dyn AbstractPort>>,
-        ports_vec: &mut Vec<Rc<dyn AbstractPort>>,
-        port_name: &str,
-    ) -> Option<Rc<TypedPort<T>>> {
-        if ports_map.contains_key(port_name) {
-            return None;
-        }
-        let port = Rc::new(TypedPort::<T>::new(port_name));
-        ports_map.insert(port_name.to_string(), port.clone());
-        ports_vec.push(port.clone());
-        Some(port)
     }
 }
 
@@ -187,10 +164,11 @@ mod tests {
     #[should_panic(expected = "component component_a already contains output port with name i32")]
     fn test_duplicate_out_port() {
         let mut a = Component::new("component_a");
-        let _port = a.add_out_port::<i32>("i32");
+        let port = Port::<Output, i32>::new("i32");
+        a.add_out_port(&port);
         assert_eq!(0, a.input_map.len());
         assert_eq!(1, a.output_map.len());
-        let _port = a.add_out_port::<f64>("i32");
+        a.add_out_port(&port);
     }
 
     #[test]
@@ -232,4 +210,3 @@ mod tests {
         assert!(a.is_output_empty());
     }
 }
-

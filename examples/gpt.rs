@@ -1,5 +1,5 @@
+use xdevs::modeling::*;
 use xdevs::*;
-use xdevs::modeling::dynamic::*;
 
 #[derive(Debug)]
 struct Generator {
@@ -7,19 +7,23 @@ struct Generator {
     sigma: f64,
     period: f64,
     count: usize,
-    input: Port<IN, bool>,
-    output: Port<OUT, usize>,
+    input: Port<Input, bool>,
+    output: Port<Output, usize>,
 }
 impl Generator {
     fn new(name: &str, period: f64) -> Self {
         let mut component = Component::new(name);
+        let input = Port::<Input, bool>::new("input");
+        let output = Port::<Output, usize>::new("output");
+        component.add_in_port(&input);
+        component.add_out_port(&output);
         Self {
             sigma: 0.,
             period,
             count: 0,
-            input: component.add_in_port::<bool>("input"),
-            output: component.add_out_port::<usize>("output"),
-            component: component,
+            input,
+            output,
+            component,
         }
     }
     fn lambda(&self) {
@@ -40,7 +44,7 @@ impl Generator {
         self.sigma
     }
 }
-impl_atomic!(Generator); // TODO issue with private/public stuff
+impl_atomic!(Generator);
 
 #[derive(Debug)]
 struct Processor {
@@ -48,19 +52,23 @@ struct Processor {
     sigma: f64,
     time: f64,
     job: Option<usize>,
-    input: Port<IN, usize>,
-    output: Port<OUT, (usize, f64)>,
+    input: Port<Input, usize>,
+    output: Port<Output, (usize, f64)>,
 }
 impl Processor {
     fn new(name: &str, time: f64) -> Self {
         let mut component = Component::new(name);
+        let input = Port::<Input, usize>::new("input");
+        let output = Port::<Output, (usize, f64)>::new("output");
+        component.add_in_port(&input);
+        component.add_out_port(&output);
         Self {
             sigma: f64::INFINITY,
             time,
             job: None,
-            input: component.add_in_port::<usize>("input"),
-            output: component.add_out_port::<(usize, f64)>("output"),
-            component: component,
+            input,
+            output,
+            component,
         }
     }
     fn lambda(&self) {
@@ -84,25 +92,31 @@ impl Processor {
         self.sigma
     }
 }
-impl_atomic!(Processor); // TODO issue with private/public stuff
+impl_atomic!(Processor);
 
 #[derive(Debug)]
 struct Transducer {
     component: Component,
     sigma: f64,
-    input_g: Port<IN, usize>,
-    input_p: Port<IN, (usize, f64)>,
-    output: Port<OUT, bool>,
+    input_g: Port<Input, usize>,
+    input_p: Port<Input, (usize, f64)>,
+    output: Port<Output, bool>,
 }
 impl Transducer {
     fn new(name: &str, time: f64) -> Self {
         let mut component = Component::new(name);
+        let input_g = Port::<Input, usize>::new("input_g");
+        let input_p = Port::<Input, (usize, f64)>::new("input_p");
+        let output = Port::<Output, bool>::new("output");
+        component.add_in_port(&input_g);
+        component.add_in_port(&input_p);
+        component.add_out_port(&output);
         Self {
             sigma: time,
-            input_g: component.add_in_port::<usize>("input_g"),
-            input_p: component.add_in_port::<(usize, f64)>("input_p"),
-            output: component.add_out_port::<bool>("output"),
-            component: component,
+            input_g,
+            input_p,
+            output,
+            component,
         }
     }
     fn lambda(&self) {
@@ -131,19 +145,20 @@ impl Transducer {
         self.sigma
     }
 }
-impl_atomic!(Transducer); // TODO issue with private/public stuff
+impl_atomic!(Transducer);
 
 #[derive(Debug)]
 struct ExperimentalFrame {
     coupled: Coupled,
-    _input: Port<IN, (usize, f64)>,
-    _output: Port<OUT, usize>,
 }
 impl ExperimentalFrame {
     fn new(name: &str, period: f64, observation: f64) -> Self {
         let mut coupled = Coupled::new(name);
-        let _input = coupled.add_in_port::<(usize, f64)>("input");
-        let _output = coupled.add_out_port::<usize>("output");
+        let input = Port::<Input, (usize, f64)>::new("input");
+        let output = Port::<Output, usize>::new("output");
+
+        coupled.add_in_port(&input);
+        coupled.add_out_port(&output);
 
         let generator = Generator::new("generator", period);
         let transducer = Transducer::new("transducer", observation);
@@ -158,12 +173,9 @@ impl ExperimentalFrame {
 
         Self {
             coupled,
-            _input,
-            _output,
         }
     }
 }
-impl_coupled!(ExperimentalFrame);
 
 fn create_gpt(period: f64, time: f64, observation: f64) -> Coupled {
     let generator = Generator::new("generator", period);
@@ -189,7 +201,7 @@ fn create_efp(period: f64, time: f64, observation: f64) -> Coupled {
     let ef = ExperimentalFrame::new("ef", period, observation);
     let processor = Processor::new("processor", time);
 
-    efp.add_component(ef);
+    efp.add_component(ef.coupled);
     efp.add_component(processor);
 
     efp.add_ic("ef", "output", "processor", "input");

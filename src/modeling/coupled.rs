@@ -1,5 +1,5 @@
-use crate::modeling::port::{Port, AbstractPort, IN, OUT};
-use super::Component;
+use crate::modeling::port::{AbstractPort, Input, Output, Port};
+use crate::modeling::Component;
 use crate::{RcHash, Simulator};
 use std::collections::{HashMap, HashSet};
 use std::fmt::{Debug, Display, Formatter, Result};
@@ -11,15 +11,15 @@ type CouplingsMap = HashMap<RcHash<dyn AbstractPort>, HashSet<RcHash<dyn Abstrac
 #[derive(Debug)]
 pub struct Coupled {
     /// Component wrapped by the coupled model.
-    component: Component,
+    pub(crate) component: Component,
     /// Components set of the DEVS coupled model.
-    components: HashMap<String, Box<dyn Simulator>>,
+    pub(crate) components: HashMap<String, Box<dyn Simulator>>,
     /// External input couplings.
-    eic: CouplingsMap,
+    pub(crate) eic: CouplingsMap,
     /// Internal couplings.
-    ic: CouplingsMap,
+    pub(crate) ic: CouplingsMap,
     /// External output couplings.
-    eoc: CouplingsMap,
+    pub(crate) eoc: CouplingsMap,
 }
 
 impl Coupled {
@@ -51,14 +51,14 @@ impl Coupled {
 
     /// Adds a new input port of type [`Port<T>`] to the component and returns a reference to it.
     /// It panics if there is already an input port with the same name.
-    pub fn add_in_port<T: 'static + Clone + Debug>(&mut self, port_name: &str) -> Port<IN, T> {
-        self.component.add_in_port(port_name)
+    pub fn add_in_port<T: 'static + Clone + Debug>(&mut self, port: &Port<Input, T>) {
+        self.component.add_in_port(port);
     }
 
     /// Adds a new output port of type [`Port<T>`] to the component and returns a reference to it.
     /// It panics if there is already an output port with the same name.
-    pub fn add_out_port<T: 'static + Clone + Debug>(&mut self, port_name: &str) -> Port<OUT, T> {
-        self.component.add_out_port(port_name)
+    pub fn add_out_port<T: 'static + Clone + Debug>(&mut self, port: &Port<Output, T>) {
+        self.component.add_out_port(port);
     }
 
     /// Adds a new component to the coupled model.
@@ -215,90 +215,6 @@ impl Coupled {
 impl Display for Coupled {
     fn fmt(&self, f: &mut Formatter<'_>) -> Result {
         write!(f, "{}", self.get_name())
-    }
-}
-
-impl Simulator for Coupled {
-    fn get_component(&self) -> &Component {
-        &self.component
-    }
-
-    fn get_component_mut(&mut self) -> &mut Component {
-        &mut self.component
-    }
-
-    fn start(&mut self, t_start: f64) {
-        let mut t_next = f64::INFINITY;
-        for component in self.components.values_mut() {
-            component.start(t_start);
-            let t = component.get_t_next();
-            if t < t_next {
-                t_next = t;
-            }
-        }
-        self.set_sim_t(t_start, t_next);
-    }
-
-    fn stop(&mut self, t_stop: f64) {
-        self.components.values_mut().for_each(|c| c.stop(t_stop));
-        self.set_sim_t(t_stop, f64::INFINITY);
-    }
-
-    fn collection(&mut self, t: f64) {
-        if t >= self.get_t_next() {
-            self.components.values_mut().for_each(|c| c.collection(t));
-            for (port_to, ports_from) in self.ic.iter() {
-                ports_from
-                    .iter()
-                    .for_each(|port_from| port_to.propagate(&**port_from))
-            }
-            for (port_to, ports_from) in self.eoc.iter() {
-                ports_from
-                    .iter()
-                    .for_each(|port_from| port_to.propagate(&**port_from))
-            }
-        }
-    }
-
-    fn transition(&mut self, t: f64) {
-        for (port_to, ports_from) in self.eic.iter() {
-            ports_from
-                .iter()
-                .for_each(|port_from| port_to.propagate(&**port_from))
-        }
-        self.components.values_mut().for_each(|c| c.transition(t));
-        let mut next_t = f64::INFINITY;
-        for component in self.components.values() {
-            let t = component.get_t_next();
-            if t < next_t {
-                next_t = t;
-            }
-        }
-        self.set_sim_t(t, next_t);
-    }
-
-    fn clear_ports(&mut self) {
-        self.components.values_mut().for_each(|c| c.clear_ports());
-        self.component.clear_ports();
-    }
-}
-
-/// Helper macro to implement the AsModel trait for coupled models.
-/// You can use this macro with any struct containing a field `coupled` of type [`Coupled`].
-#[macro_export]
-macro_rules! impl_coupled {
-    ($($COUPLED:ident),+) => {
-        $(
-            impl $crate::simulation::Simulator for $COUPLED {
-                fn get_component(&self) -> &Component { self.coupled.get_component() }
-                fn get_component_mut(&mut self) -> &mut Component { self.coupled.get_component_mut() }
-                fn start(&mut self, t_start: f64) { self.coupled.start(t_start); }
-                fn stop(&mut self, t_stop: f64) { self.coupled.stop(t_stop); }
-                fn collection(&mut self, t: f64) { self.coupled.collection(t); }
-                fn transition(&mut self, t: f64) { self.coupled.transition(t); }
-                fn clear_ports(&mut self) { self.coupled.clear_ports(); }
-            }
-        )+
     }
 }
 

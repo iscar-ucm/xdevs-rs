@@ -1,8 +1,19 @@
-use crate::Simulator;
+use super::component::Component;
 use std::fmt::Debug;
 
 /// Interface for atomic DEVS models.
 pub trait Atomic: Debug {
+    /// Returns reference to inner component.
+    fn get_component(&self) -> &Component;
+
+    /// Returns mutable reference to inner component.
+    fn get_component_mut(&mut self) -> &mut Component;
+
+    /// Returns current simulation time.
+    fn get_time(&self) -> f64 {
+        self.get_component().get_t_last()
+    }
+
     /// Output function of the atomic DEVS model.
     fn lambda(&self);
 
@@ -25,22 +36,23 @@ pub trait Atomic: Debug {
     }
 }
 
-pub fn start<T: Atomic + Simulator>(this: &mut T, t_start: f64) {
+/*
+pub fn start<T: AtomicModel + Simulator>(this: &mut T, t_start: f64) {
     let ta = this.ta();
     this.set_sim_t(t_start, t_start + ta);
 }
 
-pub fn stop<T: Atomic + Simulator>(this: &mut T, t_stop: f64) {
+pub fn stop<T: AtomicModel + Simulator>(this: &mut T, t_stop: f64) {
     this.set_sim_t(t_stop, f64::INFINITY);
 }
 
-pub fn collection<T: Atomic + Simulator>(this: &mut T, t: f64) {
+pub fn collection<T: AtomicModel + Simulator>(this: &mut T, t: f64) {
     if t >= this.get_t_next() {
         this.lambda();
     }
 }
 
-pub fn transition<T: Atomic + Simulator>(this: &mut T, t: f64) {
+pub fn transition<T: AtomicModel + Simulator>(this: &mut T, t: f64) {
     let t_next = this.get_t_next();
     if !this.get_component().is_input_empty() {
         if t == t_next {
@@ -58,29 +70,23 @@ pub fn transition<T: Atomic + Simulator>(this: &mut T, t: f64) {
     this.set_sim_t(t, t + ta)
 }
 
-pub fn clear_ports<T: Atomic + Simulator>(this: &mut T) {
+pub fn clear_ports<T: AtomicModel + Simulator>(this: &mut T) {
     this.get_component_mut().clear_ports();
 }
+ */
 
 /// Helper macro to implement the [`Atomic`] trait.
 #[macro_export]
 macro_rules! impl_atomic {
     ($($ATOMIC:ident),+) => {
         $(
-            impl $crate::modeling::dynamic::atomic::Atomic for $ATOMIC {
+            impl $crate::modeling::atomic::Atomic for $ATOMIC {
+                fn get_component(&self) -> &Component { &self.component }
+                fn get_component_mut(&mut self) -> &mut Component { &mut self.component }
                 fn lambda(&self) { self.lambda(); }
                 fn delta_int(&mut self) { self.delta_int() }
                 fn delta_ext(&mut self, e: f64) { self. delta_ext(e) }
                 fn ta(&self) -> f64 { self.ta() }
-            }
-            impl $crate::simulation::Simulator for $ATOMIC {
-                fn get_component(&self) -> &Component { &self.component }
-                fn get_component_mut(&mut self) -> &mut Component { &mut self.component }
-                fn start(&mut self, t_start: f64) { $crate::modeling::dynamic::atomic::start(self, t_start); }
-                fn stop(&mut self, t_stop: f64) { $crate::modeling::dynamic::atomic::stop(self, t_stop); }
-                fn collection(&mut self, t: f64) { $crate::modeling::dynamic::atomic::collection(self, t); }
-                fn transition(&mut self, t: f64) { $crate::modeling::dynamic::atomic::transition(self, t); }
-                fn clear_ports(&mut self) { $crate::modeling::dynamic::atomic::clear_ports(self); }
             }
         )+
     }

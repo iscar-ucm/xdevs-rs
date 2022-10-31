@@ -1,15 +1,15 @@
-use crate::modeling::dynamic::Component;
+use crate::modeling::atomic::Atomic;
+use crate::modeling::coupled::Coupled;
+use crate::modeling::Component;
 use std::fmt::Debug;
 use std::ops::{Deref, DerefMut};
 
 /// Interface for simulating DEVS models. All DEVS models must implement this trait.
 pub trait Simulator: Debug {
-    /// All the DEVS simulators must contain a [`Component`] struct.
-    /// This method returns a reference to this inner [`Component`].
+    /// Returns reference to inner [`Component`].
     fn get_component(&self) -> &Component;
 
-    /// All the DEVS simulators must contain a [`Component`] struct.
-    /// This method returns a mutable reference to this inner [`Component`].
+    /// Returns mutable reference to inner [`Component`].
     fn get_component_mut(&mut self) -> &mut Component;
 
     /// Returns the name of the inner DEVS [`Component`].
@@ -27,11 +27,7 @@ pub trait Simulator: Debug {
         self.get_component().get_t_next()
     }
 
-    /// Helper function to allow DEVS models to check the current simulation time.
-    fn get_time(&self) -> f64 {
-        self.get_t_last()
-    }
-
+    /// Sets the tine for the last and next state transitions of the inner DEVS [`Component`].
     fn set_sim_t(&mut self, t_last: f64, t_next: f64) {
         self.get_component_mut().set_sim_t(t_last, t_next);
     }
@@ -50,6 +46,121 @@ pub trait Simulator: Debug {
 
     /// Removes all the messages from all the ports.
     fn clear_ports(&mut self);
+}
+
+impl<T: Atomic> Simulator for T {
+    fn get_component(&self) -> &Component {
+        self.get_component()
+    }
+
+    fn get_component_mut(&mut self) -> &mut Component {
+        self.get_component_mut()
+    }
+
+    fn start(&mut self, t_start: f64) {
+        let ta = self.ta();
+        self.set_sim_t(t_start, t_start + ta);
+    }
+
+    fn stop(&mut self, t_stop: f64) {
+        self.set_sim_t(t_stop, f64::INFINITY);
+    }
+
+    fn collection(&mut self, t: f64) {
+        if t >= self.get_t_next() {
+            self.lambda();
+        }
+    }
+
+    fn transition(&mut self, t: f64) {
+        let t_next = self.get_t_next();
+        if !self.get_component().is_input_empty() {
+            if t == t_next {
+                self.delta_conf();
+            } else {
+                let e = t - self.get_time();
+                self.delta_ext(e);
+            }
+        } else if t == t_next {
+            self.delta_int();
+        } else {
+            return;
+        }
+        let ta = self.ta();
+        self.set_sim_t(t, t + ta)
+    }
+
+    fn clear_ports(&mut self) {
+        let component = self.get_component_mut();
+        component.clear_input();
+        component.clear_output()
+    }
+}
+
+impl Simulator for Coupled {
+    fn get_component(&self) -> &Component {
+        &self.component
+    }
+
+    fn get_component_mut(&mut self) -> &mut Component {
+        &mut self.component
+    }
+
+    fn start(&mut self, t_start: f64) {
+        let mut t_next = f64::INFINITY;
+        for component in self.components.values_mut() {
+            component.start(t_start);
+            let t = component.get_t_next();
+            if t < t_next {
+                t_next = t;
+            }
+        }
+        self.set_sim_t(t_start, t_next);
+    }
+
+    fn stop(&mut self, t_stop: f64) {
+        self.components.values_mut().for_each(|c| c.stop(t_stop));
+        self.set_sim_t(t_stop, f64::INFINITY);
+    }
+
+    fn collection(&mut self, t: f64) {
+        if t >= self.get_t_next() {
+            self.components.values_mut().for_each(|c| c.collection(t));
+            for (port_to, ports_from) in self.ic.iter() {
+                ports_from
+                    .iter()
+                    .for_each(|port_from| port_to.propagate(&**port_from))
+            }
+            for (port_to, ports_from) in self.eoc.iter() {
+                ports_from
+                    .iter()
+                    .for_each(|port_from| port_to.propagate(&**port_from))
+            }
+        }
+    }
+
+    fn transition(&mut self, t: f64) {
+        for (port_to, ports_from) in self.eic.iter() {
+            ports_from
+                .iter()
+                .for_each(|port_from| port_to.propagate(&**port_from))
+        }
+        self.components.values_mut().for_each(|c| c.transition(t));
+        let mut next_t = f64::INFINITY;
+        for component in self.components.values() {
+            let t = component.get_t_next();
+            if t < next_t {
+                next_t = t;
+            }
+        }
+        self.set_sim_t(t, next_t);
+    }
+
+    fn clear_ports(&mut self) {
+        self.components.values_mut().for_each(|c| c.clear_ports());
+        self.component.clear_output();
+        self.component.clear_input()
+    }
 }
 
 /// Root coordinator for sequential simulations of DEVS models.

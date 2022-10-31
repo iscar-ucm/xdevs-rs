@@ -1,4 +1,9 @@
-pub mod dynamic;
+pub mod atomic;
+pub mod component;
+pub mod coupled;
 pub mod port;
 
-pub use port::{Port, IN, OUT};
+pub use atomic::Atomic;
+pub use component::Component;
+pub use coupled::Coupled;
+pub use port::{Input, Output, Port};

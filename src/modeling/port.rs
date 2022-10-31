@@ -1,11 +1,12 @@
 use std::any::{type_name, Any};
 use std::cell::RefCell;
 use std::fmt::{Debug, Display, Formatter, Result};
+use std::marker::PhantomData;
 use std::ops::Deref;
 use std::rc::Rc;
 
 /// Interface for DEVS ports. This trait does not consider message types.
-pub(crate) trait AbstractPort: Debug + Display {
+pub(crate) trait AbstractPort: Any + Debug + Display {
     /// Port-to-any conversion.
     fn as_any(&self) -> &dyn Any;
 
@@ -124,19 +125,29 @@ impl<T: 'static + Clone + Debug> AbstractPort for TypedPort<T> {
     }
 }
 
-/// Constant identifier for input ports.
-pub const IN: u8 = 0;
-/// Constant identifier for output ports.
-pub const OUT: u8 = 1;
+#[derive(Clone, Copy, Debug)]
+pub struct Input();
+
+#[derive(Clone, Copy, Debug)]
+pub struct Output();
 
 /// Directive DEVS port with an associated message type.
 /// This struct is useful for two reasons. First, it hides the Rc stuff from the users.
 /// Second, it constraints the methods available depending on their direction.
 #[derive(Clone, Debug)]
-pub struct Port<const D: u8, T> (pub(crate) Rc<TypedPort<T>>);
+pub struct Port<D, T>(pub(crate) Rc<TypedPort<T>>, PhantomData<D>);
+
+impl<D, T> Port<D, T> {
+    pub fn new(name: &str) -> Self {
+        Self(Rc::new(TypedPort::<T>::new(name)), PhantomData::default())
+    }
+    pub fn get_name(&self) -> &str {
+        &self.0.name
+    }
+}
 
 /// For input ports, we can only check if they are empty and read their values.
-impl<T> Port<IN, T> {
+impl<T> Port<Input, T> {
     pub fn is_empty(&self) -> bool {
         self.0.is_empty()
     }
@@ -147,20 +158,19 @@ impl<T> Port<IN, T> {
 }
 
 /// For output ports, we can only add new values.
-impl<T> Port<OUT, T> {
+impl<T> Port<Output, T> {
     /// It adds a new value to the message bag of the port.
     pub fn add_value(&self, value: T) {
         self.0.add_value(value);
     }
 }
 
-impl<T: Clone> Port<OUT, T> {
+impl<T: Clone> Port<Output, T> {
     /// It adds a new value to the message bag of the port.
     pub fn add_values(&self, value: &[T]) {
         self.0.add_values(value);
     }
 }
-
 
 #[cfg(test)]
 mod tests {
