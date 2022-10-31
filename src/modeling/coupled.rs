@@ -66,7 +66,7 @@ impl Coupled {
     ///
     /// # Examples
     /// ```
-    /// use xdevs::Coupled;
+    /// use xdevs::modeling::Coupled;
     ///
     /// let mut top_coupled = Coupled::new("top_coupled");
     /// top_coupled.add_component(Coupled::new("component"));
@@ -105,20 +105,6 @@ impl Coupled {
     /// - the destination port does not exist.
     /// - ports are not compatible.
     /// - coupling already exist.
-    ///
-    /// # Examples
-    /// ```
-    /// use xdevs::Coupled;
-    ///
-    /// let mut component = Coupled::new("component");
-    /// component.add_in_port::<i32>("input");
-    /// let mut top_coupled = Coupled::new("top_coupled");
-    /// top_coupled.add_in_port::<i32>("input");
-    /// top_coupled.add_component(component);
-    ///
-    /// top_coupled.add_eic("input", "component", "input");
-    /// // top_coupled.add_eic("input", "component", "input");  // this panics (duplicate coupling)
-    /// ```
     pub fn add_eic(&mut self, port_from_name: &str, component_to_name: &str, port_to_name: &str) {
         let port_from = self.component.get_in_port(port_from_name);
         let component = self.get_component(component_to_name);
@@ -141,22 +127,6 @@ impl Coupled {
     /// - the destination port does not exist.
     /// - ports are not compatible.
     /// - coupling already exist.
-    ///
-    /// # Examples
-    /// ```
-    /// use xdevs::Coupled;
-    ///
-    /// let mut component_1 = Coupled::new("component_1");
-    /// component_1.add_out_port::<i32>("output");
-    /// let mut component_2 = Coupled::new("component_2");
-    /// component_2.add_in_port::<i32>("input");
-    /// let mut top_coupled = Coupled::new("top_coupled");
-    /// top_coupled.add_component(component_1);
-    /// top_coupled.add_component(component_2);
-    ///
-    /// top_coupled.add_ic("component_1", "output", "component_2", "input");
-    /// // top_coupled.add_ic("component_1", "output", "component_2", "input");  // this panics (duplicate coupling)
-    /// ```
     pub fn add_ic(
         &mut self,
         component_from_name: &str,
@@ -185,20 +155,6 @@ impl Coupled {
     /// - the destination port does not exist.
     /// - ports are not compatible.
     /// - coupling already exist.
-    ///
-    /// # Examples
-    /// ```
-    /// use xdevs::Coupled;
-    ///
-    /// let mut component = Coupled::new("component");
-    /// component.add_out_port::<i32>("output");
-    /// let mut top_coupled = Coupled::new("top_coupled");
-    /// top_coupled.add_out_port::<i32>("output");
-    /// top_coupled.add_component(component);
-    ///
-    /// top_coupled.add_eoc("component", "output", "output");
-    /// // top_coupled.add_eoc("component", "output", "output");  // this panics (duplicate coupling)
-    /// ```
     pub fn add_eoc(&mut self, component_from_name: &str, port_from_name: &str, port_to_name: &str) {
         let component = self.get_component(component_from_name).get_component();
         let port_from = component.get_out_port(port_from_name);
@@ -251,9 +207,7 @@ mod tests {
     }
 
     #[test]
-    #[should_panic(
-        expected = "component top_coupled does not contain input port with name bad_input"
-    )]
+    #[should_panic(expected = "component does not contain input port with the name provided")]
     fn test_eic_bad_port_from() {
         let mut top_coupled = Coupled::new("top_coupled");
         top_coupled.add_eic("bad_input", "bad_component", "bad_output");
@@ -265,17 +219,17 @@ mod tests {
     )]
     fn test_eic_bad_component_to() {
         let mut top_coupled = Coupled::new("top_coupled");
-        top_coupled.add_in_port::<i32>("input");
+        let port: Port<Input, i32> = Port::new("input");
+        top_coupled.add_in_port(&port);
         top_coupled.add_eic("input", "bad_component", "bad_output");
     }
 
     #[test]
-    #[should_panic(
-        expected = "component component does not contain input port with name bad_output"
-    )]
+    #[should_panic(expected = "component does not contain input port with the name provided")]
     fn test_eic_bad_port_to() {
         let mut top_coupled = Coupled::new("top_coupled");
-        top_coupled.add_in_port::<i32>("input");
+        let port: Port<Input, i32> = Port::new("input");
+        top_coupled.add_in_port(&port);
         top_coupled.add_component(Coupled::new("component"));
         top_coupled.add_eic("input", "component", "bad_output");
     }
@@ -284,9 +238,11 @@ mod tests {
     #[should_panic(expected = "ports input<i32> and input<i64> are incompatible")]
     fn test_eic_bad_types() {
         let mut top_coupled = Coupled::new("top_coupled");
-        top_coupled.add_in_port::<i32>("input");
+        let port: Port<Input, i32> = Port::new("input");
+        top_coupled.add_in_port(&port);
         let mut component = Coupled::new("component");
-        component.add_in_port::<i64>("input");
+        let port: Port<Input, i64> = Port::new("input");
+        component.add_in_port(&port);
         top_coupled.add_component(component);
         top_coupled.add_eic("input", "component", "input");
     }
@@ -295,9 +251,11 @@ mod tests {
     #[should_panic(expected = "EIC coupling input->component::input is already defined")]
     fn test_eic() {
         let mut top_coupled = Coupled::new("top_coupled");
-        top_coupled.add_in_port::<i32>("input");
+        let port: Port<Input, i32> = Port::new("input");
+        top_coupled.add_in_port(&port);
         let mut component = Coupled::new("component");
-        component.add_in_port::<i32>("input");
+        let port: Port<Input, i32> = Port::new("input");
+        component.add_in_port(&port);
         top_coupled.add_component(component);
         top_coupled.add_eic("input", "component", "input");
         top_coupled.add_eic("input", "component", "input");

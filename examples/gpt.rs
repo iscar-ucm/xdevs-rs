@@ -171,9 +171,7 @@ impl ExperimentalFrame {
         coupled.add_ic("transducer", "output", "generator", "input");
         coupled.add_eoc("generator", "output", "output");
 
-        Self {
-            coupled,
-        }
+        Self { coupled }
     }
 }
 

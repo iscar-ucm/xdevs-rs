@@ -61,7 +61,7 @@ impl Component {
     /// It panics if there is already an input port with the same name.
     pub fn add_in_port<T: 'static + Clone + Debug>(&mut self, port: &Port<Input, T>) {
         if self.input_map.contains_key(port.get_name()) {
-            panic!("component already contains input port with same name");
+            panic!("component already contains input port with the name provided");
         }
         self.input_map
             .insert(port.get_name().to_string(), port.0.clone());
@@ -72,11 +72,21 @@ impl Component {
     /// It panics if there is already an output port with the same name.
     pub fn add_out_port<T: 'static + Clone + Debug>(&mut self, port: &Port<Output, T>) {
         if self.output_map.contains_key(port.get_name()) {
-            panic!("component already contains input port with same name");
+            panic!("component already contains output port with the name provided");
         }
         self.output_map
             .insert(port.get_name().to_string(), port.0.clone());
         self.output_vec.push(port.0.clone());
+    }
+
+    /// Returns true if all the input ports of the model are empty.
+    pub fn is_input_empty(&self) -> bool {
+        self.input_vec.iter().all(|p| p.is_empty())
+    }
+
+    /// Returns true if all the output ports of the model are empty.
+    pub fn is_output_empty(&self) -> bool {
+        self.output_vec.iter().all(|p| p.is_empty())
     }
 
     /// Returns a pointer to an input port with the given name.
@@ -85,10 +95,7 @@ impl Component {
         self.input_map
             .get(port_name)
             .unwrap_or_else(|| {
-                panic!(
-                    "component {} does not contain input port with name {}",
-                    self.name, port_name
-                )
+                panic!("component does not contain input port with the name provided")
             })
             .clone()
     }
@@ -99,10 +106,7 @@ impl Component {
         self.output_map
             .get(port_name)
             .unwrap_or_else(|| {
-                panic!(
-                    "component {} does not contain output port with name {}",
-                    self.name, port_name
-                )
+                panic!("component does not contain output port with the name provided")
             })
             .clone()
     }
@@ -115,16 +119,6 @@ impl Component {
     /// Clears all the output ports of the model.
     pub(crate) fn clear_output(&mut self) {
         self.output_vec.iter().for_each(|p| p.clear());
-    }
-
-    /// Returns true if all the input ports of the model are empty.
-    pub(crate) fn is_input_empty(&self) -> bool {
-        self.input_vec.iter().all(|p| p.is_empty())
-    }
-
-    /// Returns true if all the output ports of the model are empty.
-    pub(crate) fn is_output_empty(&self) -> bool {
-        self.output_vec.iter().all(|p| p.is_empty())
     }
 }
 
@@ -139,29 +133,31 @@ mod tests {
     use super::*;
 
     #[test]
-    #[should_panic(expected = "component component_a does not contain input port with name i32")]
+    #[should_panic(expected = "component does not contain input port with the name provided")]
     fn test_wrong_in_port() {
         Component::new("component_a").get_in_port("i32");
     }
 
     #[test]
-    #[should_panic(expected = "component component_a does not contain output port with name i32")]
+    #[should_panic(expected = "component does not contain output port with the name provided")]
     fn test_wrong_out_port() {
         Component::new("component_a").get_out_port("i32");
     }
 
     #[test]
-    #[should_panic(expected = "component component_a already contains input port with name i32")]
+    #[should_panic(expected = "component already contains input port with the name provided")]
     fn test_duplicate_in_port() {
         let mut a = Component::new("component_a");
-        let _port = a.add_in_port::<i32>("i32");
+        let port: Port<Input, i32> = Port::new("i32");
+        a.add_in_port(&port);
         assert_eq!(1, a.input_map.len());
         assert_eq!(0, a.output_map.len());
-        let _port = a.add_in_port::<i32>("i32");
+        let port: Port<Input, i32> = Port::new("i32");
+        a.add_in_port(&port);
     }
 
     #[test]
-    #[should_panic(expected = "component component_a already contains output port with name i32")]
+    #[should_panic(expected = "component already contains output port with the name provided")]
     fn test_duplicate_out_port() {
         let mut a = Component::new("component_a");
         let port = Port::<Output, i32>::new("i32");
@@ -174,9 +170,12 @@ mod tests {
     #[test]
     fn test_component() {
         let mut a = Component::new("component_a");
-        let in_i32 = a.add_in_port::<i32>("i32");
-        let out_i32 = a.add_out_port::<i32>("i32");
-        let out_f64 = a.add_out_port::<f64>("f64");
+        let in_i32: Port<Input, i32> = Port::new("i32");
+        let out_i32: Port<Output, i32> = Port::new("i32");
+        let out_f64: Port<Output, f64> = Port::new("f64");
+        a.add_in_port(&in_i32);
+        a.add_out_port(&out_i32);
+        a.add_out_port(&out_f64);
 
         assert_eq!("component_a", a.name);
         assert_eq!(1, a.input_map.len());
@@ -193,7 +192,8 @@ mod tests {
             assert!(!port_dyn_ref.is_empty());
         }
 
-        a.clear_ports();
+        a.clear_output();
+        a.clear_input();
         assert!(a.is_input_empty());
         assert!(a.is_output_empty());
 
@@ -205,7 +205,8 @@ mod tests {
             assert!(!port_dyn_ref.is_empty());
         }
 
-        a.clear_ports();
+        a.clear_output();
+        a.clear_input();
         assert!(a.is_input_empty());
         assert!(a.is_output_empty());
     }
