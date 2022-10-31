@@ -67,7 +67,7 @@ pub fn clear_ports<T: Atomic + Simulator>(this: &mut T) {
 macro_rules! impl_atomic {
     ($($ATOMIC:ident),+) => {
         $(
-            impl $crate::modeling::atomic::Atomic for $ATOMIC {
+            impl $crate::modeling::dynamic::atomic::Atomic for $ATOMIC {
                 fn lambda(&self) { self.lambda(); }
                 fn delta_int(&mut self) { self.delta_int() }
                 fn delta_ext(&mut self, e: f64) { self. delta_ext(e) }
@@ -76,11 +76,11 @@ macro_rules! impl_atomic {
             impl $crate::simulation::Simulator for $ATOMIC {
                 fn get_component(&self) -> &Component { &self.component }
                 fn get_component_mut(&mut self) -> &mut Component { &mut self.component }
-                fn start(&mut self, t_start: f64) { $crate::modeling::atomic::start(self, t_start); }
-                fn stop(&mut self, t_stop: f64) { $crate::modeling::atomic::stop(self, t_stop); }
-                fn collection(&mut self, t: f64) { $crate::modeling::atomic::collection(self, t); }
-                fn transition(&mut self, t: f64) { $crate::modeling::atomic::transition(self, t); }
-                fn clear_ports(&mut self) { $crate::modeling::atomic::clear_ports(self); }
+                fn start(&mut self, t_start: f64) { $crate::modeling::dynamic::atomic::start(self, t_start); }
+                fn stop(&mut self, t_stop: f64) { $crate::modeling::dynamic::atomic::stop(self, t_stop); }
+                fn collection(&mut self, t: f64) { $crate::modeling::dynamic::atomic::collection(self, t); }
+                fn transition(&mut self, t: f64) { $crate::modeling::dynamic::atomic::transition(self, t); }
+                fn clear_ports(&mut self) { $crate::modeling::dynamic::atomic::clear_ports(self); }
             }
         )+
     }

@@ -1,9 +1,9 @@
-use crate::modeling::port::AbstractPort;
-use crate::{Component, Port, RcHash, Simulator, IN, OUT};
+use crate::modeling::port::{Port, AbstractPort, IN, OUT};
+use super::Component;
+use crate::{RcHash, Simulator};
 use std::collections::{HashMap, HashSet};
 use std::fmt::{Debug, Display, Formatter, Result};
 use std::rc::Rc;
-use std::cell::RefCell;
 
 type CouplingsMap = HashMap<RcHash<dyn AbstractPort>, HashSet<RcHash<dyn AbstractPort>>>;
 

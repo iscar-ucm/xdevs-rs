@@ -1,5 +1,5 @@
-use std::rc::Rc;
 use xdevs::*;
+use xdevs::modeling::dynamic::*;
 
 #[derive(Debug)]
 struct Generator {

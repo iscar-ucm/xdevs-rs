@@ -1,4 +1,4 @@
-use crate::Component;
+use crate::modeling::dynamic::Component;
 use std::fmt::Debug;
 use std::ops::{Deref, DerefMut};
 
