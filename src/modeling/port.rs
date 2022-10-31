@@ -38,7 +38,7 @@ pub(crate) struct TypedPort<T> {
     /// Pointer to parent component of the port.
     parent: *const Component,
     /// Message bag.
-    pub(crate) bag: Rc<RefCell<Vec<T>>>,
+    pub(crate) bag: RefCell<Vec<T>>,
 }
 
 impl<T> TypedPort<T> {
@@ -47,7 +47,7 @@ impl<T> TypedPort<T> {
         Self {
             name: name.to_string(),
             parent,
-            bag: Rc::new(RefCell::new(Vec::new())),
+            bag: RefCell::new(Vec::new()),
         }
     }
 
