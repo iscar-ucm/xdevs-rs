@@ -233,7 +233,8 @@ fn main() {
     let model_type = match args.get(1) {
         Some(model) => model.clone(),
         None => String::from("gpt"),
-    }.to_lowercase();
+    }
+    .to_lowercase();
     let period = 3.;
     let time = 1.;
     let observation = 50.;

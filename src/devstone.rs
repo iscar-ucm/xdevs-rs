@@ -1,14 +1,16 @@
-pub mod li;
 pub mod hi;
 pub mod ho;
+pub mod homod;
+pub mod li;
 
 use crate::modeling::*;
 use std::cell::RefCell;
 use std::rc::Rc;
 
-pub use li::LI;
 pub use hi::HI;
 pub use ho::HO;
+pub use homod::HOmod;
+pub use li::LI;
 
 #[derive(Debug, Default, Copy, Clone)]
 struct TestProbe {

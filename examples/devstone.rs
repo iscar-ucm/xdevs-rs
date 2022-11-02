@@ -7,7 +7,9 @@ fn main() {
     let args: Vec<String> = env::args().collect();
     let model_type = args
         .get(1)
-        .expect("first argument must select the model type").clone().to_lowercase();
+        .expect("first argument must select the model type")
+        .clone()
+        .to_lowercase();
     let width = args
         .get(2)
         .expect("second argument must select the width")
@@ -23,7 +25,7 @@ fn main() {
         "li" => LI::create(width, depth),
         "hi" => HI::create(width, depth),
         "ho" => HO::create(width, depth),
-        "homod" => todo!(),
+        "homod" => HOmod::create(width, depth),
         _ => panic!("unknown DEVStone model type"),
     };
     let mut simulator = RootCoordinator::new(coupled);
