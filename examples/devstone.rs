@@ -22,7 +22,7 @@ fn main() {
     let coupled = match model_type.as_str() {
         "li" => LI::create(width, depth),
         "hi" => HI::create(width, depth),
-        "ho" => todo!(),
+        "ho" => HO::create(width, depth),
         "homod" => todo!(),
         _ => panic!("unknown DEVStone model type"),
     };

@@ -8,6 +8,7 @@ use std::rc::Rc;
 
 pub use li::LI;
 pub use hi::HI;
+pub use ho::HO;
 
 #[derive(Debug, Default, Copy, Clone)]
 struct TestProbe {
