@@ -1,3 +1,6 @@
+extern crate core;
+
+use std::env;
 use xdevs::modeling::*;
 use xdevs::simulation::*;
 
@@ -226,13 +229,20 @@ fn create_efp(period: f64, time: f64, observation: f64) -> Coupled {
 }
 
 fn main() {
+    let args: Vec<String> = env::args().collect();
+    let model_type = match args.get(1) {
+        Some(model) => model.clone(),
+        None => String::from("gpt"),
+    }.to_lowercase();
     let period = 3.;
     let time = 1.;
     let observation = 50.;
 
-    // let coupled = create_gpt(period, time, observation);
-    let coupled = create_efp(period, time, observation);
-
+    let coupled = match model_type.as_str() {
+        "gpt" => create_gpt(period, time, observation),
+        "efp" => create_efp(period, time, observation),
+        _ => panic!("unknown model type. It must be either \"gpt\" or \"efp\""),
+    };
     let mut simulator = RootCoordinator::new(coupled);
     simulator.simulate_time(f64::INFINITY)
 }

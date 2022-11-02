@@ -1,12 +1,15 @@
 pub mod li;
+pub mod hi;
+pub mod ho;
 
 use crate::modeling::*;
 use std::cell::RefCell;
 use std::rc::Rc;
 
 pub use li::LI;
+pub use hi::HI;
 
-#[derive(Debug, Copy, Clone)]
+#[derive(Debug, Default, Copy, Clone)]
 struct TestProbe {
     n_atomics: usize,
     n_eics: usize,
@@ -15,20 +18,6 @@ struct TestProbe {
     n_internals: usize,
     n_externals: usize,
     n_events: usize,
-}
-
-impl TestProbe {
-    fn new() -> Self {
-        Self {
-            n_atomics: 0,
-            n_eics: 0,
-            n_ics: 0,
-            n_eocs: 0,
-            n_internals: 0,
-            n_externals: 0,
-            n_events: 0,
-        }
-    }
 }
 
 #[derive(Debug)]
