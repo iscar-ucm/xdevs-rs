@@ -32,7 +32,7 @@ pub(crate) trait AbstractPort: Debug + Display {
 
 /// Directionless DEVS port with an associated message type.
 #[derive(Debug)]
-pub(crate) struct TypedPort<T> {
+pub(crate) struct RawPort<T> {
     /// Name of the port.
     name: String,
     /// Pointer to parent component of the port.
@@ -41,7 +41,7 @@ pub(crate) struct TypedPort<T> {
     pub(crate) bag: RefCell<Vec<T>>,
 }
 
-impl<T> TypedPort<T> {
+impl<T> RawPort<T> {
     /// Constructor function.
     pub(crate) fn new(name: &str, parent: *const Component) -> Self {
         Self {
@@ -67,39 +67,39 @@ impl<T> TypedPort<T> {
     }
 }
 
-impl<T: Clone> TypedPort<T> {
+impl<T: Clone> RawPort<T> {
     /// It adds multiple values to the message bag of the port.
     pub(crate) fn add_values(&self, values: &[T]) {
         self.bag.borrow_mut().extend_from_slice(values);
     }
 }
 
-impl<T: 'static> TypedPort<T> {
+impl<T: 'static> RawPort<T> {
     /// Tries to convert a trait object [`AbstractPort`] to a reference to [`TypedPort<T>`].
-    pub(crate) fn try_upgrade(port: &dyn AbstractPort) -> Option<&TypedPort<T>> {
-        port.as_any().downcast_ref::<TypedPort<T>>()
+    pub(crate) fn try_upgrade(port: &dyn AbstractPort) -> Option<&RawPort<T>> {
+        port.as_any().downcast_ref::<RawPort<T>>()
     }
 
     /// Converts a trait object [`AbstractPort`] to a reference to [`TypedPort<T>`].
     /// It panics if this conversion is not possible.
-    pub(crate) fn upgrade(port: &dyn AbstractPort) -> &TypedPort<T> {
-        TypedPort::<T>::try_upgrade(port)
+    pub(crate) fn upgrade(port: &dyn AbstractPort) -> &RawPort<T> {
+        RawPort::<T>::try_upgrade(port)
             .unwrap_or_else(|| panic!("port is incompatible with value type"))
     }
 
     /// Checks if a trait object [`AbstractPort`] can be upgraded to [`typedPort<T>`].
     pub(crate) fn is_compatible(port: &dyn AbstractPort) -> bool {
-        TypedPort::<T>::try_upgrade(port).is_some()
+        RawPort::<T>::try_upgrade(port).is_some()
     }
 }
 
-impl<T> Display for TypedPort<T> {
+impl<T> Display for RawPort<T> {
     fn fmt(&self, f: &mut Formatter<'_>) -> Result {
         write!(f, "{}<{}>", self.name, type_name::<T>())
     }
 }
 
-impl<T: 'static + Clone + Debug> AbstractPort for TypedPort<T> {
+impl<T: 'static + Clone + Debug> AbstractPort for RawPort<T> {
     fn as_any(&self) -> &dyn Any {
         self
     }
@@ -121,13 +121,13 @@ impl<T: 'static + Clone + Debug> AbstractPort for TypedPort<T> {
     }
 
     fn is_compatible(&self, other: &dyn AbstractPort) -> bool {
-        TypedPort::<T>::is_compatible(other)
+        RawPort::<T>::is_compatible(other)
     }
 
     fn propagate(&self, port_from: &dyn AbstractPort) {
         self.bag
             .borrow_mut()
-            .extend_from_slice(&*TypedPort::<T>::upgrade(port_from).bag.borrow());
+            .extend_from_slice(&*RawPort::<T>::upgrade(port_from).bag.borrow());
     }
 }
 
@@ -143,10 +143,10 @@ pub struct Output();
 /// This struct is useful for two reasons. First, it hides the Rc stuff from the users.
 /// Second, it constraints the methods available depending on their direction.
 #[derive(Clone, Debug)]
-pub struct Port<D, T>(pub(crate) Rc<TypedPort<T>>, PhantomData<D>);
+pub struct Port<D, T>(pub(crate) Rc<RawPort<T>>, PhantomData<D>);
 
 impl<D, T> Port<D, T> {
-    pub(crate) fn new(port: Rc<TypedPort<T>>) -> Self {
+    pub(crate) fn new(port: Rc<RawPort<T>>) -> Self {
         Self(port, PhantomData::default())
     }
 
@@ -190,7 +190,7 @@ mod tests {
 
     #[test]
     fn test_port() {
-        let port_a = TypedPort::new("port_a", std::ptr::null());
+        let port_a = RawPort::new("port_a", std::ptr::null());
         assert_eq!("port_a", port_a.get_name());
         assert_eq!("port_a<usize>", port_a.to_string());
         assert!(port_a.is_empty());
@@ -221,25 +221,25 @@ mod tests {
 
     #[test]
     fn test_port_trait() {
-        let port_a = TypedPort::<i32>::new("port_a", std::ptr::null());
+        let port_a = RawPort::<i32>::new("port_a", std::ptr::null());
 
-        assert!(TypedPort::<i32>::is_compatible(&port_a));
-        assert!(!TypedPort::<i64>::is_compatible(&port_a));
-        assert!(TypedPort::<i32>::try_upgrade(&port_a).is_some());
-        assert!(TypedPort::<i64>::try_upgrade(&port_a).is_none());
+        assert!(RawPort::<i32>::is_compatible(&port_a));
+        assert!(!RawPort::<i64>::is_compatible(&port_a));
+        assert!(RawPort::<i32>::try_upgrade(&port_a).is_some());
+        assert!(RawPort::<i64>::try_upgrade(&port_a).is_none());
     }
 
     #[test]
     #[should_panic(expected = "port is incompatible with value type")]
     fn test_port_upgrade_panics() {
-        let port_a = TypedPort::<i32>::new("port_a", std::ptr::null());
-        TypedPort::<i64>::upgrade(&port_a);
+        let port_a = RawPort::<i32>::new("port_a", std::ptr::null());
+        RawPort::<i64>::upgrade(&port_a);
     }
 
     #[test]
     fn test_propagate() {
-        let port_a = TypedPort::new("port_a", std::ptr::null());
-        let port_b = TypedPort::new("port_b", std::ptr::null());
+        let port_a = RawPort::new("port_a", std::ptr::null());
+        let port_b = RawPort::new("port_b", std::ptr::null());
 
         for i in 0..10 {
             port_a.add_value(i);

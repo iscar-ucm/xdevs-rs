@@ -1,7 +1,7 @@
 use std::env;
 use xdevs::devstone::*;
-use xdevs::modeling::*;
 use xdevs::simulation::*;
+use std::time::Instant;
 
 fn main() {
     let args: Vec<String> = env::args().collect();
@@ -21,6 +21,7 @@ fn main() {
         .parse()
         .expect("depth could not be parsed");
 
+    let start = Instant::now();
     let coupled = match model_type.as_str() {
         "li" => LI::create(width, depth),
         "hi" => HI::create(width, depth),
@@ -28,6 +29,14 @@ fn main() {
         "homod" => HOmod::create(width, depth),
         _ => panic!("unknown DEVStone model type"),
     };
+    let duration = start.elapsed();
+    println!("Model creation time: {:?}", duration);
+    let start = Instant::now();
     let mut simulator = RootCoordinator::new(coupled);
-    simulator.simulate_time(f64::INFINITY)
+    let duration = start.elapsed();
+    println!("Simulator creation time: {:?}", duration);
+    let start = Instant::now();
+    simulator.simulate_time(f64::INFINITY);
+    let duration = start.elapsed();
+    println!("Simulation time: {:?}", duration);
 }

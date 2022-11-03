@@ -1,5 +1,5 @@
 use super::port::{AbstractPort, Input, Output, Port};
-use crate::modeling::port::TypedPort;
+use crate::modeling::port::RawPort;
 use std::collections::HashMap;
 use std::fmt::{Debug, Display, Formatter, Result};
 use std::rc::Rc;
@@ -64,7 +64,7 @@ impl Component {
         if self.input_map.contains_key(name) {
             panic!("component already contains input port with the name provided");
         }
-        let port = Rc::new(TypedPort::<T>::new(name, self));
+        let port = Rc::new(RawPort::<T>::new(name, self));
         self.input_map.insert(name.to_string(), port.clone());
         self.input_vec.push(port.clone());
         Port::<Input, T>::new(port)
@@ -76,7 +76,7 @@ impl Component {
         if self.output_map.contains_key(name) {
             panic!("component already contains output port with the name provided");
         }
-        let port = Rc::new(TypedPort::<T>::new(name, self));
+        let port = Rc::new(RawPort::<T>::new(name, self));
         self.output_map.insert(name.to_string(), port.clone());
         self.output_vec.push(port.clone());
         Port::<Output, T>::new(port)
