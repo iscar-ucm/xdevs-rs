@@ -14,9 +14,6 @@ pub(crate) trait AbstractPort: Debug + Display {
     /// Returns the name of the port.
     fn get_name(&self) -> &str;
 
-    /// Returns pointer to parent component of the port.
-    fn get_parent(&self) -> *const Component;
-
     /// Returns `true` if the port does not contain any value.
     fn is_empty(&self) -> bool;
 
@@ -35,18 +32,15 @@ pub(crate) trait AbstractPort: Debug + Display {
 pub(crate) struct RawPort<T> {
     /// Name of the port.
     name: String,
-    /// Pointer to parent component of the port.
-    parent: *const Component,
     /// Message bag.
-    pub(crate) bag: RefCell<Vec<T>>,
+    bag: RefCell<Vec<T>>,
 }
 
 impl<T> RawPort<T> {
     /// Constructor function.
-    pub(crate) fn new(name: &str, parent: *const Component) -> Self {
+    pub(crate) fn new(name: &str) -> Self {
         Self {
             name: name.to_string(),
-            parent,
             bag: RefCell::new(Vec::new()),
         }
     }
@@ -108,10 +102,6 @@ impl<T: 'static + Clone + Debug> AbstractPort for RawPort<T> {
         &self.name
     }
 
-    fn get_parent(&self) -> *const Component {
-        self.parent
-    }
-
     fn is_empty(&self) -> bool {
         self.bag.borrow().is_empty()
     }
@@ -153,10 +143,6 @@ impl<D, T> Port<D, T> {
     pub fn get_name(&self) -> &str {
         &self.0.name
     }
-
-    pub fn get_parent(&self) -> *const Component {
-        self.0.parent
-    }
 }
 
 /// For input ports, we can only check if they are empty and read their values.
@@ -190,7 +176,7 @@ mod tests {
 
     #[test]
     fn test_port() {
-        let port_a = RawPort::new("port_a", std::ptr::null());
+        let port_a = RawPort::new("port_a");
         assert_eq!("port_a", port_a.get_name());
         assert_eq!("port_a<usize>", port_a.to_string());
         assert!(port_a.is_empty());
@@ -221,7 +207,7 @@ mod tests {
 
     #[test]
     fn test_port_trait() {
-        let port_a = RawPort::<i32>::new("port_a", std::ptr::null());
+        let port_a = RawPort::<i32>::new("port_a");
 
         assert!(RawPort::<i32>::is_compatible(&port_a));
         assert!(!RawPort::<i64>::is_compatible(&port_a));
@@ -232,14 +218,14 @@ mod tests {
     #[test]
     #[should_panic(expected = "port is incompatible with value type")]
     fn test_port_upgrade_panics() {
-        let port_a = RawPort::<i32>::new("port_a", std::ptr::null());
+        let port_a = RawPort::<i32>::new("port_a");
         RawPort::<i64>::upgrade(&port_a);
     }
 
     #[test]
     fn test_propagate() {
-        let port_a = RawPort::new("port_a", std::ptr::null());
-        let port_b = RawPort::new("port_b", std::ptr::null());
+        let port_a = RawPort::new("port_a");
+        let port_b = RawPort::new("port_b");
 
         for i in 0..10 {
             port_a.add_value(i);

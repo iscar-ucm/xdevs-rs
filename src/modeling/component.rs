@@ -13,14 +13,14 @@ pub struct Component {
     t_last: f64,
     /// Time for the next component state transition.
     t_next: f64,
-    /// Input port set of the DEVS component. Input port names must be unique.
-    input_map: HashMap<String, Rc<dyn AbstractPort>>,
-    /// Output port set of the DEVS component. Output port names must be unique.
-    output_map: HashMap<String, Rc<dyn AbstractPort>>,
-    /// Input port set of the DEVS component (serialized for better performance).
-    input_vec: Vec<Rc<dyn AbstractPort>>,
-    /// Output port set of the DEVS component (serialized for better performance).
-    output_vec: Vec<Rc<dyn AbstractPort>>,
+    /// Keys are port IDs, and values are indices of input ports in [Component::input_ports].
+    input_map: HashMap<String, usize>,
+    /// Keys are port IDs, and values are indices of output ports in [Component::output_ports].
+    output_map: HashMap<String, usize>,
+    /// Input port set of the DEVS component.
+    input_ports: Vec<Rc<dyn AbstractPort>>,
+    /// Output port set of the DEVS component.
+    output_ports: Vec<Rc<dyn AbstractPort>>,
 }
 
 impl Component {
@@ -32,8 +32,8 @@ impl Component {
             t_next: f64::INFINITY,
             input_map: HashMap::new(),
             output_map: HashMap::new(),
-            input_vec: Vec::new(),
-            output_vec: Vec::new(),
+            input_ports: Vec::new(),
+            output_ports: Vec::new(),
         }
     }
 
@@ -64,9 +64,9 @@ impl Component {
         if self.input_map.contains_key(name) {
             panic!("component already contains input port with the name provided");
         }
-        let port = Rc::new(RawPort::<T>::new(name, self));
-        self.input_map.insert(name.to_string(), port.clone());
-        self.input_vec.push(port.clone());
+        let port = Rc::new(RawPort::<T>::new(name));
+        self.input_map.insert(name.to_string(), self.input_ports.len());
+        self.input_ports.push(port.clone());
         Port::<Input, T>::new(port)
     }
 
@@ -76,52 +76,44 @@ impl Component {
         if self.output_map.contains_key(name) {
             panic!("component already contains output port with the name provided");
         }
-        let port = Rc::new(RawPort::<T>::new(name, self));
-        self.output_map.insert(name.to_string(), port.clone());
-        self.output_vec.push(port.clone());
+        let port = Rc::new(RawPort::<T>::new(name));
+        self.output_map.insert(name.to_string(), self.output_ports.len());
+        self.output_ports.push(port.clone());
         Port::<Output, T>::new(port)
     }
 
     /// Returns true if all the input ports of the model are empty.
     pub fn is_input_empty(&self) -> bool {
-        self.input_vec.iter().all(|p| p.is_empty())
+        self.input_ports.iter().all(|p| p.is_empty())
     }
 
     /// Returns true if all the output ports of the model are empty.
     pub fn is_output_empty(&self) -> bool {
-        self.output_vec.iter().all(|p| p.is_empty())
+        self.output_ports.iter().all(|p| p.is_empty())
     }
 
     /// Returns a pointer to an input port with the given name.
     /// If the component does not have any input port with this name, it panics.
     pub(crate) fn get_in_port(&self, port_name: &str) -> Rc<dyn AbstractPort> {
-        self.input_map
-            .get(port_name)
-            .unwrap_or_else(|| {
-                panic!("component does not contain input port with the name provided")
-            })
-            .clone()
+        let i = *self.input_map.get(port_name).expect("component does not contain input port with the name provided");
+        self.input_ports.get(i).expect("this code should never happen").clone()
     }
 
     /// Returns a pointer to an output port with the given name.
     /// If the component does not have any output port with this name, it panics.
     pub(crate) fn get_out_port(&self, port_name: &str) -> Rc<dyn AbstractPort> {
-        self.output_map
-            .get(port_name)
-            .unwrap_or_else(|| {
-                panic!("component does not contain output port with the name provided")
-            })
-            .clone()
+        let i = *self.output_map.get(port_name).expect("component does not contain output port with the name provided");
+        self.output_ports.get(i).expect("this code should never happen").clone()
     }
 
     /// Clears all the input ports of the model.
     pub(crate) fn clear_input(&mut self) {
-        self.input_vec.iter().for_each(|p| p.clear());
+        self.input_ports.iter().for_each(|p| p.clear());
     }
 
     /// Clears all the output ports of the model.
     pub(crate) fn clear_output(&mut self) {
-        self.output_vec.iter().for_each(|p| p.clear());
+        self.output_ports.iter().for_each(|p| p.clear());
     }
 }
 

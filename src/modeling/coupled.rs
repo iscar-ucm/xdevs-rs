@@ -17,9 +17,7 @@ type CouplingsVec = Vec<(Rc<dyn AbstractPort>, Rc<dyn AbstractPort>)>;
 pub struct Coupled {
     /// Component wrapped by the coupled model.
     pub(crate) component: Component,
-    /// Set of subcomponents of the DEVS coupled model.
-    /// The key corresponds to the name of the subcomponent. It must be unique.
-    /// The value corresponds to the index of [`Coupled::comps_vec`] where the component is stored.
+    /// Keys are IDs of subcomponents, and values are indices of [`Coupled::comps_vec`].
     comps_map: HashMap<String, usize>,
     /// External input couplings.
     eic_map: CouplingsMap,
