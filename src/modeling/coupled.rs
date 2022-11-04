@@ -117,11 +117,11 @@ impl Coupled {
     /// - the destination port does not exist.
     /// - ports are not compatible.
     /// - coupling already exists.
-    pub fn add_eic(&mut self, port_from_name: &str, component_to_name: &str, port_to_name: &str) {
-        let port_from = self.component.get_in_port(port_from_name);
-        let component = self.get_component(component_to_name).get_component();
-        let port_to = component.get_in_port(port_to_name);
-        Self::add_coupling(&mut self.eic_map, &mut self.eic_vec, port_from, port_to);
+    pub fn add_eic(&mut self, port_from: &str, component_to: &str, port_to: &str) {
+        let from = self.component.get_in_port(port_from);
+        let component = self.get_component(component_to).get_component();
+        let to = component.get_in_port(port_to);
+        Self::add_coupling(&mut self.eic_map, &mut self.eic_vec, from, to);
     }
 
     /// Adds a new IC to the model.
@@ -136,16 +136,20 @@ impl Coupled {
     /// - coupling already exists.
     pub fn add_ic(
         &mut self,
-        component_from_name: &str,
-        port_from_name: &str,
-        component_to_name: &str,
-        port_to_name: &str,
+        component_from: &str,
+        port_from: &str,
+        component_to: &str,
+        port_to: &str,
     ) {
-        let component_from = self.get_component(component_from_name).get_component();
-        let port_from = component_from.get_out_port(port_from_name);
-        let component_to = self.get_component(component_to_name).get_component();
-        let port_to = component_to.get_in_port(port_to_name);
-        Self::add_coupling(&mut self.ic_map, &mut self.ic_vec, port_from, port_to);
+        let from = self
+            .get_component(component_from)
+            .get_component()
+            .get_out_port(port_from);
+        let to = self
+            .get_component(component_to)
+            .get_component()
+            .get_in_port(port_to);
+        Self::add_coupling(&mut self.ic_map, &mut self.ic_vec, from, to);
     }
 
     /// Adds a new EOC to the model.
@@ -157,11 +161,13 @@ impl Coupled {
     /// - the destination port does not exist.
     /// - ports are not compatible.
     /// - coupling already exists.
-    pub fn add_eoc(&mut self, component_from_name: &str, port_from_name: &str, port_to_name: &str) {
-        let component = self.get_component(component_from_name).get_component();
-        let port_from = component.get_out_port(port_from_name);
-        let port_to = self.component.get_out_port(port_to_name);
-        Self::add_coupling(&mut self.eoc_map, &mut self.eoc_vec, port_from, port_to);
+    pub fn add_eoc(&mut self, component_from: &str, port_from: &str, port_to: &str) {
+        let from = self
+            .get_component(component_from)
+            .get_component()
+            .get_out_port(port_from);
+        let to = self.component.get_out_port(port_to);
+        Self::add_coupling(&mut self.eoc_map, &mut self.eoc_vec, from, to);
     }
 }
 

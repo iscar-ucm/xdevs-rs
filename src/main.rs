@@ -3,6 +3,12 @@ use std::time::Instant;
 use xdevs::devstone::*;
 use xdevs::simulation::*;
 
+/// The binary crate of xDEVS just runs the DEVStone model selected by the user.
+/// USAGE:
+/// `cargo run <MODEL_TYPE> <WIDTH> <DEPTH>`
+/// - `<MODEL_TYPE>` must be `LI`, `HI`, `HO`, or `HOmod`.
+/// - `WIDTH` must be equal to or greater than 1.
+/// - `DEPTH` must be equal to or greater than 1.
 fn main() {
     let args: Vec<String> = env::args().collect();
     let model_type = args
