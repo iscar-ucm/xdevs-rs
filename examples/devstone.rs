@@ -1,7 +1,7 @@
 use std::env;
+use std::time::Instant;
 use xdevs::devstone::*;
 use xdevs::simulation::*;
-use std::time::Instant;
 
 fn main() {
     let args: Vec<String> = env::args().collect();

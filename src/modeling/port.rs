@@ -1,4 +1,3 @@
-use super::Component;
 use std::any::{type_name, Any};
 use std::cell::RefCell;
 use std::fmt::{Debug, Display, Formatter, Result};

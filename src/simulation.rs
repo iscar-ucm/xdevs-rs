@@ -50,11 +50,11 @@ pub trait Simulator: Debug {
 
 impl<T: Atomic> Simulator for T {
     fn get_component(&self) -> &Component {
-        self.get_component()
+        Atomic::get_component(self)
     }
 
     fn get_component_mut(&mut self) -> &mut Component {
-        self.get_component_mut()
+        Atomic::get_component_mut(self)
     }
 
     fn start(&mut self, t_start: f64) {
@@ -70,7 +70,7 @@ impl<T: Atomic> Simulator for T {
 
     fn collection(&mut self, t: f64) {
         if t >= self.get_t_next() {
-            self.lambda();
+            Atomic::lambda(self)
         }
     }
 
@@ -78,17 +78,17 @@ impl<T: Atomic> Simulator for T {
         let t_next = self.get_t_next();
         if !self.get_component().is_input_empty() {
             if t == t_next {
-                self.delta_conf();
+                Atomic::delta_conf(self);
             } else {
                 let e = t - self.get_time();
-                self.delta_ext(e);
+                Atomic::delta_ext(self, e);
             }
         } else if t == t_next {
-            self.delta_int();
+            Atomic::delta_int(self);
         } else {
             return;
         }
-        let ta = self.ta();
+        let ta = Atomic::ta(self);
         self.set_sim_t(t, t + ta);
     }
 

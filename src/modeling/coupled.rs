@@ -96,7 +96,7 @@ impl Coupled {
 
     /// Returns a reference to a component with the provided name.
     /// If the coupled model does not contain any model with that name, it panics.
-    fn get_component(&self, name: &str) -> &Box<dyn Simulator> {
+    fn get_component(&self, name: &str) -> &dyn Simulator {
         self.comps_vec
             .get(
                 *self
@@ -105,6 +105,7 @@ impl Coupled {
                     .expect("coupled model does not contain component with the name provided"),
             )
             .unwrap()
+            .as_ref()
     }
 
     /// Adds a new EIC to the model.

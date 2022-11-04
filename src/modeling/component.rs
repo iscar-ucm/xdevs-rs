@@ -65,7 +65,8 @@ impl Component {
             panic!("component already contains input port with the name provided");
         }
         let port = Rc::new(RawPort::<T>::new(name));
-        self.input_map.insert(name.to_string(), self.input_ports.len());
+        self.input_map
+            .insert(name.to_string(), self.input_ports.len());
         self.input_ports.push(port.clone());
         Port::<Input, T>::new(port)
     }
@@ -77,7 +78,8 @@ impl Component {
             panic!("component already contains output port with the name provided");
         }
         let port = Rc::new(RawPort::<T>::new(name));
-        self.output_map.insert(name.to_string(), self.output_ports.len());
+        self.output_map
+            .insert(name.to_string(), self.output_ports.len());
         self.output_ports.push(port.clone());
         Port::<Output, T>::new(port)
     }
@@ -95,15 +97,27 @@ impl Component {
     /// Returns a pointer to an input port with the given name.
     /// If the component does not have any input port with this name, it panics.
     pub(crate) fn get_in_port(&self, port_name: &str) -> Rc<dyn AbstractPort> {
-        let i = *self.input_map.get(port_name).expect("component does not contain input port with the name provided");
-        self.input_ports.get(i).expect("this code should never happen").clone()
+        let i = *self
+            .input_map
+            .get(port_name)
+            .expect("component does not contain input port with the name provided");
+        self.input_ports
+            .get(i)
+            .expect("this code should never happen")
+            .clone()
     }
 
     /// Returns a pointer to an output port with the given name.
     /// If the component does not have any output port with this name, it panics.
     pub(crate) fn get_out_port(&self, port_name: &str) -> Rc<dyn AbstractPort> {
-        let i = *self.output_map.get(port_name).expect("component does not contain output port with the name provided");
-        self.output_ports.get(i).expect("this code should never happen").clone()
+        let i = *self
+            .output_map
+            .get(port_name)
+            .expect("component does not contain output port with the name provided");
+        self.output_ports
+            .get(i)
+            .expect("this code should never happen")
+            .clone()
     }
 
     /// Clears all the input ports of the model.
