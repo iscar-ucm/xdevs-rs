@@ -1,11 +1,10 @@
 use crate::modeling::atomic::Atomic;
 use crate::modeling::coupled::Coupled;
 use crate::modeling::Component;
-use std::fmt::Debug;
 use std::ops::{Deref, DerefMut};
 
 /// Interface for simulating DEVS models. All DEVS models must implement this trait.
-pub trait Simulator: Debug {
+pub trait Simulator {
     /// Returns reference to inner [`Component`].
     fn get_component(&self) -> &Component;
 
@@ -13,21 +12,25 @@ pub trait Simulator: Debug {
     fn get_component_mut(&mut self) -> &mut Component;
 
     /// Returns the name of the inner DEVS [`Component`].
+    #[inline]
     fn get_name(&self) -> &str {
         self.get_component().get_name()
     }
 
     /// Returns the time for the last state transition of the inner DEVS [`Component`].
+    #[inline]
     fn get_t_last(&self) -> f64 {
         self.get_component().get_t_last()
     }
 
     /// Returns the time for the next state transition of the inner DEVS [`Component`].
+    #[inline]
     fn get_t_next(&self) -> f64 {
         self.get_component().get_t_next()
     }
 
     /// Sets the tine for the last and next state transitions of the inner DEVS [`Component`].
+    #[inline]
     fn set_sim_t(&mut self, t_last: f64, t_next: f64) {
         self.get_component_mut().set_sim_t(t_last, t_next);
     }
@@ -49,25 +52,30 @@ pub trait Simulator: Debug {
 }
 
 impl<T: Atomic> Simulator for T {
+    #[inline]
     fn get_component(&self) -> &Component {
         Atomic::get_component(self)
     }
 
+    #[inline]
     fn get_component_mut(&mut self) -> &mut Component {
         Atomic::get_component_mut(self)
     }
 
+    #[inline]
     fn start(&mut self, t_start: f64) {
         Atomic::start(self);
         let ta = self.ta();
         self.set_sim_t(t_start, t_start + ta);
     }
 
+    #[inline]
     fn stop(&mut self, t_stop: f64) {
         self.set_sim_t(t_stop, f64::INFINITY);
         Atomic::stop(self);
     }
 
+    #[inline]
     fn collection(&mut self, t: f64) {
         if t >= self.get_t_next() {
             Atomic::lambda(self)
@@ -92,6 +100,7 @@ impl<T: Atomic> Simulator for T {
         self.set_sim_t(t, t + ta);
     }
 
+    #[inline]
     fn clear_ports(&mut self) {
         let component = self.get_component_mut();
         component.clear_input();
@@ -100,17 +109,19 @@ impl<T: Atomic> Simulator for T {
 }
 
 impl Simulator for Coupled {
+    #[inline]
     fn get_component(&self) -> &Component {
         &self.component
     }
 
+    #[inline]
     fn get_component_mut(&mut self) -> &mut Component {
         &mut self.component
     }
 
     fn start(&mut self, t_start: f64) {
         let mut t_next = f64::INFINITY;
-        for component in self.comps_vec.iter_mut() {
+        for component in self.components.iter_mut() {
             component.start(t_start);
             let t = component.get_t_next();
             if t < t_next {
@@ -120,29 +131,24 @@ impl Simulator for Coupled {
         self.set_sim_t(t_start, t_next);
     }
 
+    #[inline]
     fn stop(&mut self, t_stop: f64) {
-        self.comps_vec.iter_mut().for_each(|c| c.stop(t_stop));
+        self.components.iter_mut().for_each(|c| c.stop(t_stop));
         self.set_sim_t(t_stop, f64::INFINITY);
     }
 
     fn collection(&mut self, t: f64) {
         if t >= self.get_t_next() {
-            self.comps_vec.iter_mut().for_each(|c| c.collection(t));
-            self.ic_vec
-                .iter()
-                .for_each(|(port_from, port_to)| port_to.propagate(&**port_from));
-            self.eoc_vec
-                .iter()
-                .for_each(|(port_from, port_to)| port_to.propagate(&**port_from));
+            self.components.iter_mut().for_each(|c| c.collection(t));
+            self.ics.iter().for_each(|c| c.propagate());
+            self.eocs.iter().for_each(|c| c.propagate());
         }
     }
 
     fn transition(&mut self, t: f64) {
-        self.eic_vec
-            .iter()
-            .for_each(|(port_from, port_to)| port_to.propagate(&**port_from));
+        self.eics.iter().for_each(|c| c.propagate());
         let mut next_t = f64::INFINITY;
-        for component in self.comps_vec.iter_mut() {
+        for component in self.components.iter_mut() {
             component.transition(t);
             let t = component.get_t_next();
             if t < next_t {
@@ -152,8 +158,9 @@ impl Simulator for Coupled {
         self.set_sim_t(t, next_t);
     }
 
+    #[inline]
     fn clear_ports(&mut self) {
-        self.comps_vec.iter_mut().for_each(|c| c.clear_ports());
+        self.components.iter_mut().for_each(|c| c.clear_ports());
         self.component.clear_output();
         self.component.clear_input()
     }

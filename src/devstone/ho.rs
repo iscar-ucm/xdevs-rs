@@ -1,9 +1,8 @@
 use super::{DEVStoneAtomic, DEVStoneSeeder, TestProbe};
 use crate::modeling::Coupled;
-use crate::*;
 use std::cell::RefCell;
+use std::rc::Rc;
 
-#[derive(Debug)]
 pub struct HO {
     pub coupled: Coupled,
 }
@@ -76,9 +75,9 @@ impl HO {
         }
         // Before exiting, we update the probe if required
         if let Some(p) = probe {
-            p.borrow_mut().n_eics += coupled.eic_vec.len();
-            p.borrow_mut().n_ics += coupled.ic_vec.len();
-            p.borrow_mut().n_eocs += coupled.eoc_vec.len()
+            p.borrow_mut().n_eics += coupled.eics.len();
+            p.borrow_mut().n_ics += coupled.ics.len();
+            p.borrow_mut().n_eocs += coupled.eocs.len()
         }
         Self { coupled }
     }

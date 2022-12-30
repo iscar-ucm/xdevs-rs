@@ -23,7 +23,6 @@ struct TestProbe {
     n_events: usize,
 }
 
-#[derive(Debug)]
 struct DEVStoneAtomic {
     component: Component,
     sigma: f64,
@@ -31,8 +30,8 @@ struct DEVStoneAtomic {
     n_externals: usize,
     n_events: usize,
     probe: Option<Rc<RefCell<TestProbe>>>,
-    input: Port<Input, usize>,
-    output: Port<Output, usize>,
+    input: InPort<usize>,
+    output: OutPort<usize>,
 }
 
 impl DEVStoneAtomic {
@@ -57,14 +56,17 @@ impl DEVStoneAtomic {
 }
 
 impl Atomic for DEVStoneAtomic {
+    #[inline]
     fn get_component(&self) -> &Component {
         &self.component
     }
 
+    #[inline]
     fn get_component_mut(&mut self) -> &mut Component {
         &mut self.component
     }
 
+    #[inline]
     fn stop(&mut self) {
         if let Some(t) = &self.probe {
             let mut x = t.borrow_mut();
@@ -74,31 +76,35 @@ impl Atomic for DEVStoneAtomic {
         }
     }
 
+    #[inline]
     fn lambda(&self) {
         self.output.add_value(self.n_events);
     }
 
+    #[inline]
     fn delta_int(&mut self) {
         self.n_internals += 1;
         self.sigma = f64::INFINITY;
     }
 
     fn delta_ext(&mut self, _e: f64) {
-        self.n_externals += 1;
-        self.n_events += self.input.get_values().len();
+        if self.probe.is_some() {
+            self.n_externals += 1;
+            self.n_events += self.input.get_values().len();
+        }
         self.sigma = 0.;
     }
 
+    #[inline]
     fn ta(&self) -> f64 {
         self.sigma
     }
 }
 
-#[derive(Debug)]
 struct DEVStoneSeeder {
     component: Component,
     sigma: f64,
-    output: Port<Output, usize>,
+    output: OutPort<usize>,
 }
 
 impl DEVStoneSeeder {
@@ -114,26 +120,32 @@ impl DEVStoneSeeder {
 }
 
 impl Atomic for DEVStoneSeeder {
+    #[inline]
     fn get_component(&self) -> &Component {
         &self.component
     }
 
+    #[inline]
     fn get_component_mut(&mut self) -> &mut Component {
         &mut self.component
     }
 
+    #[inline]
     fn lambda(&self) {
         self.output.add_value(0);
     }
 
+    #[inline]
     fn delta_int(&mut self) {
         self.sigma = f64::INFINITY;
     }
 
+    #[inline]
     fn delta_ext(&mut self, _e: f64) {
         self.sigma = f64::INFINITY;
     }
 
+    #[inline]
     fn ta(&self) -> f64 {
         self.sigma
     }

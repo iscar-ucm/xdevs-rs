@@ -1,252 +1,200 @@
-use std::any::{type_name, Any};
-use std::cell::RefCell;
-use std::fmt::{Debug, Display, Formatter, Result};
-use std::marker::PhantomData;
-use std::ops::Deref;
-use std::rc::Rc;
+use std::any::Any;
+use std::ops::{Deref, DerefMut};
 
-/// Abstract DEVS ports. This trait does not consider message types nor port directions.
-pub(crate) trait AbstractPort: Debug + Display {
+/// DEVS coupling.
+pub(crate) trait Coupling {
+    /// It propagates the messages from a source to a destination port.
+    fn propagate(&self);
+}
+
+/// Intermediate trait for creating couplings without breaking borrowing rules.
+pub(crate) trait HalfCoupling {
+    /// It completes a coupling fiven a source port. If ports are incompatible, it returns ['None'].
+    fn new_coupling(&self, from: &dyn Port) -> Option<Box<dyn Coupling>>;
+}
+
+/// DEVS ports. It does not consider message types nor port directions.
+pub(crate) trait Port {
     /// Port-to-any conversion.
     fn as_any(&self) -> &dyn Any;
-
-    /// Returns the name of the port.
-    fn get_name(&self) -> &str;
 
     /// Returns `true` if the port does not contain any value.
     fn is_empty(&self) -> bool;
 
     /// It clears all the values in the port.
-    fn clear(&self);
+    fn clear(&mut self);
 
-    /// Checks if the port is compatible with other.
-    fn is_compatible(&self, other: &dyn AbstractPort) -> bool;
-
-    /// Propagates values from other port to the port.
-    fn propagate(&self, other: &dyn AbstractPort);
+    /// Creates a new coupling from other port to this port.
+    /// If ports are incompatible, it returns [`None`].
+    fn half_coupling(&mut self) -> Box<dyn HalfCoupling>;
 }
 
-/// Directionless DEVS port with an associated message type.
+///  Message bag. This is the primary artifact for implementing DEVS ports.
 #[derive(Debug)]
-pub(crate) struct RawPort<T> {
-    /// Name of the port.
-    name: String,
-    /// Message bag.
-    bag: RefCell<Vec<T>>,
+pub(crate) struct Bag<T>(Vec<T>);
+
+impl<T> Bag<T> {
+    pub(crate) fn new() -> Self {
+        Self(Vec::new())
+    }
 }
 
-impl<T> RawPort<T> {
-    /// Constructor function.
-    pub(crate) fn new(name: &str) -> Self {
-        Self {
-            name: name.to_string(),
-            bag: RefCell::new(Vec::new()),
+impl<T> Deref for Bag<T> {
+    type Target = Vec<T>;
+
+    fn deref(&self) -> &Self::Target {
+        &self.0
+    }
+}
+
+impl<T> DerefMut for Bag<T> {
+    fn deref_mut(&mut self) -> &mut Self::Target {
+        &mut self.0
+    }
+}
+
+/// Input port. It is just a wrapper to a constant pointer to a [`Bag`].
+/// This structure only allows reading messages from the underlying bag.
+/// Thus, it cannot inject messages to the bag. This is key to ensure safety.
+#[derive(Debug)]
+pub struct InPort<T>(*const Bag<T>);
+
+impl<T: 'static + Clone> InPort<T> {
+    pub(crate) fn new(bag: &Bag<T>) -> Self {
+        Self(bag)
+    }
+
+    /// Returns `true` if the underlying bag is empty. Otherwise, it returns `false`.
+    ///
+    /// # Safety
+    ///
+    /// Users must only use this method while on a transition function of
+    /// an atomic model. Otherwise, it may lead to undefined behavior.
+    #[inline]
+    pub fn is_empty(&self) -> bool {
+        unsafe { (*self.0).is_empty() }
+    }
+
+    /// Returns a reference to the slice of messages of the underlying bag.
+    ///
+    /// # Safety
+    ///
+    /// Users must only use this method while on a transition function of
+    /// an atomic model. Otherwise, it may lead to undefined behavior.
+    #[inline]
+    pub fn get_values(&self) -> &[T] {
+        unsafe { &(*self.0) }
+    }
+}
+
+/// Output port. It is just a wrapper to a mutable pointer to a [`Bag`].
+/// This structure only injecting messages to the underlying bag.
+/// Thus, it cannot read the messages in the bag. This is key to ensure safety.
+#[derive(Debug)]
+pub struct OutPort<T>(*mut Bag<T>);
+
+impl<T: 'static + Clone> OutPort<T> {
+    pub(crate) fn new(bag: &mut Bag<T>) -> Self {
+        Self(bag)
+    }
+
+    /// Adds a new value to the output port.
+    ///
+    /// # Safety
+    ///
+    /// Users must only use this method while on an output function of
+    /// an atomic model. Otherwise, it may lead to undefined behavior.
+    #[inline]
+    pub fn add_value(&self, value: T) {
+        unsafe {
+            (*self.0).push(value);
         }
     }
 
-    /// It checks if the message bag of the port is empty.
-    pub(crate) fn is_empty(&self) -> bool {
-        self.bag.borrow().is_empty()
-    }
-
-    /// It returns a reference to the message bag of the port.
-    pub(crate) fn get_values(&self) -> impl Deref<Target = Vec<T>> + '_ {
-        self.bag.borrow()
-    }
-
-    /// It adds a new value to the message bag of the port.
-    pub(crate) fn add_value(&self, value: T) {
-        self.bag.borrow_mut().push(value);
+    /// Adds new values from a slice to the output port.
+    ///
+    /// # Safety
+    ///
+    /// Users must only use this method while on an output function of
+    /// an atomic model. Otherwise, it may lead to undefined behavior.
+    #[inline]
+    pub fn add_values(&self, values: &[T]) {
+        unsafe {
+            (*self.0).extend_from_slice(values);
+        }
     }
 }
 
-impl<T: Clone> RawPort<T> {
-    /// It adds multiple values to the message bag of the port.
-    pub(crate) fn add_values(&self, values: &[T]) {
-        self.bag.borrow_mut().extend_from_slice(values);
+/// Coupling edge between a destination port and a source port.
+struct Edge<T> {
+    /// Source port.
+    port_from: InPort<T>,
+    /// Destination port.
+    port_to: OutPort<T>,
+}
+
+impl<T: 'static + Clone> HalfCoupling for OutPort<T> {
+    fn new_coupling(&self, from: &dyn Port) -> Option<Box<dyn Coupling>> {
+        let port_from = InPort::new(from.as_any().downcast_ref::<Bag<T>>()?);
+        let port_to = OutPort(self.0);
+        Some(Box::new(Edge{port_from, port_to}))
     }
 }
 
-impl<T: 'static> RawPort<T> {
-    /// Tries to convert a trait object [`AbstractPort`] to a reference to [`TypedPort<T>`].
-    pub(crate) fn try_upgrade(port: &dyn AbstractPort) -> Option<&RawPort<T>> {
-        port.as_any().downcast_ref::<RawPort<T>>()
-    }
-
-    /// Converts a trait object [`AbstractPort`] to a reference to [`TypedPort<T>`].
-    /// It panics if this conversion is not possible.
-    pub(crate) fn upgrade(port: &dyn AbstractPort) -> &RawPort<T> {
-        RawPort::<T>::try_upgrade(port)
-            .unwrap_or_else(|| panic!("port is incompatible with value type"))
-    }
-
-    /// Checks if a trait object [`AbstractPort`] can be upgraded to [`typedPort<T>`].
-    pub(crate) fn is_compatible(port: &dyn AbstractPort) -> bool {
-        RawPort::<T>::try_upgrade(port).is_some()
+impl<T: HalfCoupling> HalfCoupling for Box<T> {
+    #[inline]
+    fn new_coupling(&self, from: &dyn Port) -> Option<Box<dyn Coupling>> {
+        (**self).new_coupling(from)
     }
 }
 
-impl<T> Display for RawPort<T> {
-    fn fmt(&self, f: &mut Formatter<'_>) -> Result {
-        write!(f, "{}<{}>", self.name, type_name::<T>())
+impl<T: 'static + Clone> Coupling for Edge<T> {
+    #[inline]
+    fn propagate(&self) {
+        self.port_to.add_values(self.port_from.get_values());
     }
 }
 
-impl<T: 'static + Clone + Debug> AbstractPort for RawPort<T> {
+impl<T: 'static + Clone> Port for Bag<T> {
+    #[inline]
     fn as_any(&self) -> &dyn Any {
         self
     }
 
-    fn get_name(&self) -> &str {
-        &self.name
-    }
-
+    #[inline]
     fn is_empty(&self) -> bool {
-        self.bag.borrow().is_empty()
-    }
-
-    fn clear(&self) {
-        self.bag.borrow_mut().clear();
-    }
-
-    fn is_compatible(&self, other: &dyn AbstractPort) -> bool {
-        RawPort::<T>::is_compatible(other)
-    }
-
-    fn propagate(&self, port_from: &dyn AbstractPort) {
-        self.bag
-            .borrow_mut()
-            .extend_from_slice(&*RawPort::<T>::upgrade(port_from).bag.borrow());
-    }
-}
-
-/// Phantom struct for marking ports as input.
-#[derive(Clone, Copy, Debug)]
-pub struct Input();
-
-/// Phantom struct for marking ports as output.
-#[derive(Clone, Copy, Debug)]
-pub struct Output();
-
-/// Directive DEVS port with an associated message type.
-/// This struct is useful for two reasons. First, it hides the Rc stuff from the users.
-/// Second, it constraints the methods available depending on their direction.
-#[derive(Clone, Debug)]
-pub struct Port<D, T>(pub(crate) Rc<RawPort<T>>, PhantomData<D>);
-
-impl<D, T> Port<D, T> {
-    pub(crate) fn new(port: Rc<RawPort<T>>) -> Self {
-        Self(port, PhantomData::default())
-    }
-
-    pub fn get_name(&self) -> &str {
-        &self.0.name
-    }
-}
-
-/// For input ports, we can only check if they are empty and read their values.
-impl<T> Port<Input, T> {
-    pub fn is_empty(&self) -> bool {
         self.0.is_empty()
     }
 
-    pub fn get_values(&self) -> impl Deref<Target = Vec<T>> + '_ {
-        self.0.get_values()
+    #[inline]
+    fn clear(&mut self) {
+        self.0.clear();
+    }
+
+    #[inline]
+    fn half_coupling(&mut self) -> Box<dyn HalfCoupling> {
+        Box::new(OutPort::new(self))
     }
 }
 
-/// For output ports, we can only add new values.
-impl<T> Port<Output, T> {
-    /// It adds a new value to the message bag of the port.
-    pub fn add_value(&self, value: T) {
-        self.0.add_value(value);
-    }
-}
-
-impl<T: Clone> Port<Output, T> {
-    pub fn add_values(&self, value: &[T]) {
-        self.0.add_values(value);
-    }
-}
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-
-    #[test]
-    fn test_port() {
-        let port_a = RawPort::new("port_a");
-        assert_eq!("port_a", port_a.get_name());
-        assert_eq!("port_a<usize>", port_a.to_string());
-        assert!(port_a.is_empty());
-        assert_eq!(0, port_a.get_values().len());
-
-        port_a.add_value(0);
-        assert!(!port_a.is_empty());
-        assert_eq!(1, port_a.get_values().len());
-
-        port_a.clear();
-        assert!(port_a.is_empty());
-        assert_eq!(0, port_a.get_values().len());
-
-        for i in 0..10 {
-            port_a.add_value(i);
-            assert!(port_a.get_values().get(i).is_some());
-            assert!(port_a.get_values().get(i + 1).is_none());
-            assert_eq!(i + 1, port_a.get_values().len());
-        }
-
-        let mut i = 0;
-        let vals = port_a.get_values();
-        for event in vals.iter() {
-            assert_eq!(&i, event);
-            i += 1;
-        }
+impl<T: Port + ?Sized> Port for Box<T> {
+    #[inline]
+    fn as_any(&self) -> &dyn Any {
+        (**self).as_any()
     }
 
-    #[test]
-    fn test_port_trait() {
-        let port_a = RawPort::<i32>::new("port_a");
-
-        assert!(RawPort::<i32>::is_compatible(&port_a));
-        assert!(!RawPort::<i64>::is_compatible(&port_a));
-        assert!(RawPort::<i32>::try_upgrade(&port_a).is_some());
-        assert!(RawPort::<i64>::try_upgrade(&port_a).is_none());
+    #[inline]
+    fn is_empty(&self) -> bool {
+        (**self).is_empty()
     }
 
-    #[test]
-    #[should_panic(expected = "port is incompatible with value type")]
-    fn test_port_upgrade_panics() {
-        let port_a = RawPort::<i32>::new("port_a");
-        RawPort::<i64>::upgrade(&port_a);
+    #[inline]
+    fn clear(&mut self) {
+        (**self).clear();
     }
 
-    #[test]
-    fn test_propagate() {
-        let port_a = RawPort::new("port_a");
-        let port_b = RawPort::new("port_b");
-
-        for i in 0..10 {
-            port_a.add_value(i);
-            port_b.add_value(10 + i);
-        }
-
-        port_a.propagate(&port_b);
-        assert_eq!(20, port_a.get_values().len());
-        assert_eq!(10, port_b.get_values().len());
-
-        port_b.add_value(20);
-        assert_eq!(20, port_a.get_values().len());
-        assert_eq!(11, port_b.get_values().len());
-
-        port_a.clear();
-        assert_eq!(0, port_a.get_values().len());
-        assert_eq!(11, port_b.get_values().len());
-
-        port_a.propagate(&port_b);
-        assert_eq!(11, port_a.get_values().len());
-
-        port_a.clear();
-        port_b.clear();
+    #[inline]
+    fn half_coupling(&mut self) -> Box<dyn HalfCoupling> {
+        (**self).half_coupling()
     }
 }

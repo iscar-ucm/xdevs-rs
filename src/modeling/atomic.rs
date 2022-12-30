@@ -1,8 +1,7 @@
 use super::component::Component;
-use std::fmt::Debug;
 
 /// Interface for atomic DEVS models.
-pub trait Atomic: Debug {
+pub trait Atomic {
     /// Returns reference to inner component.
     fn get_component(&self) -> &Component;
 
