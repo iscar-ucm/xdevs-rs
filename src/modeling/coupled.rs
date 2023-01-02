@@ -74,13 +74,6 @@ impl Coupled {
         Some(self.components.get(index)?.get_component())
     }
 
-    /// Returns a mutable reference to a component with the provided name.
-    /// If the coupled model does not contain any model with that name, it return [`None`].
-    fn get_component_mut(&mut self, name: &str) -> Option<&mut Component> {
-        let index = *self.comps_map.get(name)?;
-        Some(self.components.get_mut(index)?.get_component_mut())
-    }
-
     /// Adds a new EIC to the model.
     /// You must provide the input port name of the coupled model,
     /// the receiving component name, and its input port name.
@@ -91,16 +84,14 @@ impl Coupled {
     /// - ports are not compatible.
     /// - coupling already exists.
     pub fn add_eic(&mut self, port_from: &str, component_to: &str, port_to: &str) {
-        let comp_to = self.get_component_mut(component_to).expect("component_to does not exist");
-        let p_to = comp_to.get_in_port_mut(port_to).expect("port_to does not exist");
-        let coup = p_to.half_coupling();
-
         let p_from = self.component.get_in_port(port_from).expect("port_from does not exist");
-        let coup = coup.new_coupling(p_from).expect("ports are not compatible");
+        let comp_to = self.get_component(component_to).expect("component_to does not exist");
+        let p_to = comp_to.get_in_port(port_to).expect("port_to does not exist");
+        let coup = p_from.new_coupling(p_to).expect("ports are not compatible");
 
         let source_key = port_from.to_string();
         let destination_key = component_to.to_string() + "-" + port_to;
-        let coups = self.eic_map.entry(source_key).or_insert(HashMap::new());
+        let coups = self.eic_map.entry(source_key).or_default();
         if coups.contains_key(&destination_key) {
             panic!("coupling already exists");
         }
@@ -125,18 +116,15 @@ impl Coupled {
         component_to: &str,
         port_to: &str,
     ) {
-
-        let comp_to = self.get_component_mut(component_to).expect("component_to does not exist");
-        let p_to = comp_to.get_in_port_mut(port_to).expect("port_to does not exist");
-        let coup = p_to.half_coupling();
-
         let comp_from = self.get_component(component_from).expect("component_from does not exist");
         let p_from = comp_from.get_out_port(port_from).expect("port_from does not exist");
-        let coup = coup.new_coupling(p_from).expect("ports are not compatible");
+        let comp_to = self.get_component(component_to).expect("component_to does not exist");
+        let p_to = comp_to.get_in_port(port_to).expect("port_to does not exist");
+        let coup = p_from.new_coupling(p_to).expect("ports are not compatible");
 
         let source_key = component_from.to_string() + "-" + port_from;
         let destination_key = component_to.to_string() + "-" + port_to;
-        let coups = self.ic_map.entry(source_key).or_insert(HashMap::new());
+        let coups = self.ic_map.entry(source_key).or_default();
         if coups.contains_key(&destination_key) {
             panic!("coupling already exists");
         }
@@ -154,16 +142,15 @@ impl Coupled {
     /// - ports are not compatible.
     /// - coupling already exists.
     pub fn add_eoc(&mut self, component_from: &str, port_from: &str, port_to: &str) {
-        let p_to = self.component.get_out_port_mut(port_to).expect("port_to does not exist");
-        let coup = p_to.half_coupling();
 
         let comp_from = self.get_component(component_from).expect("component_from does not exist");
         let p_from = comp_from.get_out_port(port_from).expect("port_from does not exist");
-        let coup = coup.new_coupling(p_from).expect("ports are not compatible");
+        let p_to = self.component.get_out_port(port_to).expect("port_to does not exist");
+        let coup = p_from.new_coupling(p_to).expect("ports are not compatible");
 
         let source_key = component_from.to_string() + "-" + port_from;
         let destination_key = port_to.to_string();
-        let coups = self.eoc_map.entry(source_key).or_insert(HashMap::new());
+        let coups = self.eoc_map.entry(source_key).or_default();
         if coups.contains_key(&destination_key) {
             panic!("coupling already exists");
         }

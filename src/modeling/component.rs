@@ -1,5 +1,6 @@
-use super::port::{Bag, InPort, OutPort, Port};
+use super::port::{InPort, OutPort, Port};
 use std::collections::HashMap;
+use crate::modeling::port::new_bag;
 
 /// DEVS component. Models must comprise a ['Component'] to fulfill the [`crate::simulation::Simulator`] trait.
 pub struct Component {
@@ -64,11 +65,10 @@ impl Component {
         if self.input_map.contains_key(name) {
             panic!("component already contains input port with the name provided");
         }
-        let bag = Box::new(Bag::<T>::new());
-        let port = InPort::new(&bag);
-        self.input_map
-            .insert(name.to_string(), self.in_ports.len());
-        self.in_ports.push(bag);
+        let bag = new_bag();
+        let port = InPort::new(bag.clone());
+        self.input_map.insert(name.to_string(), self.in_ports.len());
+        self.in_ports.push(Box::new(bag));
         port
     }
 
@@ -78,20 +78,21 @@ impl Component {
         if self.output_map.contains_key(name) {
             panic!("component already contains output port with the name provided");
         }
-        let mut bag = Box::new(Bag::<T>::new());
-        let port = OutPort::new(&mut bag);
-        self.output_map
-            .insert(name.to_string(), self.out_ports.len());
-        self.out_ports.push(bag);
+        let bag = new_bag();
+        let port = OutPort::new(bag.clone());
+        self.output_map.insert(name.to_string(), self.out_ports.len());
+        self.out_ports.push(Box::new(bag));
         port
     }
 
     /// Returns true if all the input ports of the model are empty.
+    #[inline]
     pub fn is_input_empty(&self) -> bool {
         self.in_ports.iter().all(|p| p.is_empty())
     }
 
     /// Returns true if all the output ports of the model are empty.
+    #[inline]
     pub fn is_output_empty(&self) -> bool {
         self.out_ports.iter().all(|p| p.is_empty())
     }
@@ -103,25 +104,11 @@ impl Component {
         Some(self.in_ports.get(i)?)
     }
 
-    /// Returns a mutable reference to an input port with the given name.
-    /// If the component does not have any input port with this name, it returns [`None`].
-    pub(crate) fn get_in_port_mut(&mut self, port_name: &str) -> Option<&mut dyn Port> {
-        let i = *self.input_map.get(port_name)?;
-        Some(self.in_ports.get_mut(i)?)
-    }
-
     /// Returns a reference to an output port with the given name.
     /// If the component does not have any output port with this name, it returns [`None`].
     pub(crate) fn get_out_port(&self, port_name: &str) -> Option<&dyn Port> {
         let i = *self.output_map.get(port_name)?;
         Some(self.out_ports.get(i)?)
-    }
-
-    /// Returns a mutable reference to an output port with the given name.
-    /// If the component does not have any output port with this name, it returns [`None`].
-    pub(crate) fn get_out_port_mut(&mut self, port_name: &str) -> Option<&mut dyn Port> {
-        let i = *self.output_map.get(port_name)?;
-        Some(self.out_ports.get_mut(i)?)
     }
 
     /// Clears all the input ports of the model.
