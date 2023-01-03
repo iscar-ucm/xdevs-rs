@@ -1,6 +1,6 @@
 [package]
 name = "xdevs"
-version = "0.1.1"
+version = "0.2.0"
 authors = ["Román Cárdenas <rcardenas.rod@gmail.com>"]
 edition = "2021"
 description = "An open source DEVS M&S framework."
@@ -13,6 +13,10 @@ categories = ["simulation"]
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 
 [dependencies]
+rayon = { version = "1.6", optional = true }
+
+[features]
+parallel = ["rayon"]
 
 [profile.release]
 lto = true

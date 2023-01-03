@@ -1,6 +1,7 @@
-use super::port::{Coupling, InPort, OutPort};
-use super::Component;
+use super::port::Port;
+use super::{Component, InPort, OutPort};
 use crate::simulation::Simulator;
+use crate::{DynRef, Shared};
 use std::collections::HashMap;
 
 /// Coupled DEVS model.
@@ -18,11 +19,11 @@ pub struct Coupled {
     /// Components of the DEVS coupled model (serialized for better performance).
     pub(crate) components: Vec<Box<dyn Simulator>>,
     /// External input couplings (serialized for better performance).
-    pub(crate) eics: Vec<Box<dyn Coupling>>,
+    pub(crate) eics: Vec<(Shared<dyn Port>, Shared<dyn Port>)>,
     /// Internal couplings (serialized for better performance).
-    pub(crate) ics: Vec<Box<dyn Coupling>>,
+    pub(crate) ics: Vec<(Shared<dyn Port>, Shared<dyn Port>)>,
     /// External output couplings (serialized for better performance).
-    pub(crate) eocs: Vec<Box<dyn Coupling>>,
+    pub(crate) eocs: Vec<(Shared<dyn Port>, Shared<dyn Port>)>,
 }
 
 impl Coupled {
@@ -44,20 +45,20 @@ impl Coupled {
     /// Adds a new input port of type [`Port<Input, T>`] and returns a reference to it.
     /// It panics if there is already an input port with the same name.
     #[inline]
-    pub fn add_in_port<T: 'static + Clone>(&mut self, name: &str) -> InPort<T> {
+    pub fn add_in_port<T: DynRef + Clone>(&mut self, name: &str) -> InPort<T> {
         self.component.add_in_port::<T>(name)
     }
 
     /// Adds a new output port of type [`Port<Output, T>`] and returns a reference to it.
     /// It panics if there is already an output port with the same name.
     #[inline]
-    pub fn add_out_port<T: 'static + Clone>(&mut self, name: &str) -> OutPort<T> {
+    pub fn add_out_port<T: DynRef + Clone>(&mut self, name: &str) -> OutPort<T> {
         self.component.add_out_port::<T>(name)
     }
 
     /// Adds a new component to the coupled model.
     /// If there is already a component with the same name as the new component, it panics.
-    pub fn add_component<T: 'static + Simulator>(&mut self, component: Box<T>) {
+    pub fn add_component<T: Simulator>(&mut self, component: Box<T>) {
         let component_name = component.get_name();
         if self.comps_map.contains_key(component_name) {
             panic!("coupled model already contains component with the name provided")
@@ -84,11 +85,19 @@ impl Coupled {
     /// - ports are not compatible.
     /// - coupling already exists.
     pub fn add_eic(&mut self, port_from: &str, component_to: &str, port_to: &str) {
-        let p_from = self.component.get_in_port(port_from).expect("port_from does not exist");
-        let comp_to = self.get_component(component_to).expect("component_to does not exist");
-        let p_to = comp_to.get_in_port(port_to).expect("port_to does not exist");
-        let coup = p_from.new_coupling(p_to).expect("ports are not compatible");
-
+        let p_from = self
+            .component
+            .get_in_port(port_from)
+            .expect("port_from does not exist");
+        let comp_to = self
+            .get_component(component_to)
+            .expect("component_to does not exist");
+        let p_to = comp_to
+            .get_in_port(port_to)
+            .expect("port_to does not exist");
+        if !p_from.is_compatible(&*p_to) {
+            panic!("ports are not compatible")
+        }
         let source_key = port_from.to_string();
         let destination_key = component_to.to_string() + "-" + port_to;
         let coups = self.eic_map.entry(source_key).or_default();
@@ -96,7 +105,7 @@ impl Coupled {
             panic!("coupling already exists");
         }
         coups.insert(destination_key, self.eics.len());
-        self.eics.push(coup);
+        self.eics.push((p_from, p_to));
     }
 
     /// Adds a new IC to the model.
@@ -116,12 +125,21 @@ impl Coupled {
         component_to: &str,
         port_to: &str,
     ) {
-        let comp_from = self.get_component(component_from).expect("component_from does not exist");
-        let p_from = comp_from.get_out_port(port_from).expect("port_from does not exist");
-        let comp_to = self.get_component(component_to).expect("component_to does not exist");
-        let p_to = comp_to.get_in_port(port_to).expect("port_to does not exist");
-        let coup = p_from.new_coupling(p_to).expect("ports are not compatible");
-
+        let comp_from = self
+            .get_component(component_from)
+            .expect("component_from does not exist");
+        let p_from = comp_from
+            .get_out_port(port_from)
+            .expect("port_from does not exist");
+        let comp_to = self
+            .get_component(component_to)
+            .expect("component_to does not exist");
+        let p_to = comp_to
+            .get_in_port(port_to)
+            .expect("port_to does not exist");
+        if !p_from.is_compatible(&*p_to) {
+            panic!("ports are not compatible")
+        }
         let source_key = component_from.to_string() + "-" + port_from;
         let destination_key = component_to.to_string() + "-" + port_to;
         let coups = self.ic_map.entry(source_key).or_default();
@@ -129,7 +147,7 @@ impl Coupled {
             panic!("coupling already exists");
         }
         coups.insert(destination_key, self.ics.len());
-        self.ics.push(coup);
+        self.ics.push((p_from, p_to));
     }
 
     /// Adds a new EOC to the model.
@@ -142,12 +160,19 @@ impl Coupled {
     /// - ports are not compatible.
     /// - coupling already exists.
     pub fn add_eoc(&mut self, component_from: &str, port_from: &str, port_to: &str) {
-
-        let comp_from = self.get_component(component_from).expect("component_from does not exist");
-        let p_from = comp_from.get_out_port(port_from).expect("port_from does not exist");
-        let p_to = self.component.get_out_port(port_to).expect("port_to does not exist");
-        let coup = p_from.new_coupling(p_to).expect("ports are not compatible");
-
+        let comp_from = self
+            .get_component(component_from)
+            .expect("component_from does not exist");
+        let p_from = comp_from
+            .get_out_port(port_from)
+            .expect("port_from does not exist");
+        let p_to = self
+            .component
+            .get_out_port(port_to)
+            .expect("port_to does not exist");
+        if !p_from.is_compatible(&*p_to) {
+            panic!("ports are not compatible")
+        }
         let source_key = component_from.to_string() + "-" + port_from;
         let destination_key = port_to.to_string();
         let coups = self.eoc_map.entry(source_key).or_default();
@@ -155,6 +180,6 @@ impl Coupled {
             panic!("coupling already exists");
         }
         coups.insert(destination_key, self.eocs.len());
-        self.eocs.push(coup);
+        self.eocs.push((p_from, p_to));
     }
 }

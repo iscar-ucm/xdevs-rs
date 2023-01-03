@@ -1,20 +1,9 @@
+use crate::{DynRef, Mutable, Shared};
 use std::any::Any;
-use std::ops::Deref;
-use std::rc::Rc;
-use std::cell::RefCell;
-
-pub trait Message: 'static + Clone {}
-
-impl<T: 'static + Clone> Message for T {}
-
-/// DEVS coupling.
-pub(crate) trait Coupling {
-    /// It propagates the messages from a source to a destination port.
-    fn propagate(&self);
-}
+use std::ops::{Deref, DerefMut};
 
 /// DEVS ports. It does not consider message types nor port directions.
-pub(crate) trait Port {
+pub(crate) trait Port: DynRef {
     /// Port-to-any conversion.
     fn as_any(&self) -> &dyn Any;
 
@@ -22,32 +11,53 @@ pub(crate) trait Port {
     fn is_empty(&self) -> bool;
 
     /// It clears all the values in the port.
-    fn clear(&mut self);
+    fn clear(&self);
 
     /// Returns `true` if other port is compatible.
     fn is_compatible(&self, other: &dyn Port) -> bool;
 
     fn propagate(&self, port_to: &dyn Port);
-
-    /// Creates a new coupling from this prot to other port.
-    /// If ports are incompatible, it returns [`None`].
-    fn new_coupling(&self, other: &dyn Port) -> Option<Box<dyn Coupling>>;
 }
 
-pub(crate) type Bag<T> = Rc<RefCell<Vec<T>>>;
+#[derive(Debug)]
+pub(crate) struct Bag<T>(Mutable<Vec<T>>);
 
-pub(crate) fn new_bag<T>() -> Bag<T> {
-    Rc::new(RefCell::new(Vec::new()))
+impl<T> Bag<T> {
+    pub(crate) fn new() -> Self {
+        Self(Mutable::new(Vec::new()))
+    }
+}
+
+#[cfg(feature = "parallel")]
+impl<T> Bag<T> {
+    pub(crate) fn borrow(&self) -> impl Deref<Target = Vec<T>> + '_ {
+        self.0.read().unwrap()
+    }
+
+    pub(crate) fn borrow_mut(&self) -> impl DerefMut<Target = Vec<T>> + '_ {
+        self.0.write().unwrap()
+    }
+}
+
+#[cfg(not(feature = "parallel"))]
+impl<T> Bag<T> {
+    pub(crate) fn borrow(&self) -> impl Deref<Target = Vec<T>> + '_ {
+        self.0.borrow()
+    }
+
+    pub(crate) fn borrow_mut(&self) -> impl DerefMut<Target = Vec<T>> + '_ {
+        self.0.borrow_mut()
+    }
 }
 
 /// Input port. It is just a wrapper of a [`Bag`].
 /// This structure only allows reading messages from the underlying bag.
 /// Thus, it cannot inject messages to the bag.
-#[derive(Debug)]
-pub struct InPort<T>(Bag<T>);
+#[derive(Clone, Debug)]
+pub struct InPort<T>(Shared<Bag<T>>);
 
 impl<T> InPort<T> {
-    pub(crate) fn new(bag: Bag<T>) -> Self {
+    pub(crate) fn new(bag: Shared<Bag<T>>) -> Self {
         Self(bag)
     }
 
@@ -59,7 +69,7 @@ impl<T> InPort<T> {
 
     /// Returns a reference to the slice of messages of the underlying bag.
     #[inline]
-    pub fn get_values(&self) -> impl Deref<Target=Vec<T>> + '_ {
+    pub fn get_values(&self) -> impl Deref<Target = Vec<T>> + '_ {
         self.0.borrow()
     }
 }
@@ -67,11 +77,11 @@ impl<T> InPort<T> {
 /// Output port. It is just a wrapper of a [`Bag`].
 /// This structure only injecting messages to the underlying bag.
 /// Thus, it cannot read the messages in the bag.
-#[derive(Debug)]
-pub struct OutPort<T>(Bag<T>);
+#[derive(Clone, Debug)]
+pub struct OutPort<T>(Shared<Bag<T>>);
 
 impl<T> OutPort<T> {
-    pub(crate) fn new(bag: Bag<T>) -> Self {
+    pub(crate) fn new(bag: Shared<Bag<T>>) -> Self {
         Self(bag)
     }
 
@@ -90,22 +100,7 @@ impl<T: Clone> OutPort<T> {
     }
 }
 
-/// Coupling edge between a destination port and a source port.
-struct Edge<T> {
-    /// Source port.
-    port_from: InPort<T>,
-    /// Destination port.
-    port_to: OutPort<T>,
-}
-
-impl<T: Clone> Coupling for Edge<T> {
-    #[inline]
-    fn propagate(&self) {
-        self.port_to.add_values(&self.port_from.get_values());
-    }
-}
-
-impl<T: 'static + Clone> Port for Bag<T> {
+impl<T: DynRef + Clone> Port for Bag<T> {
     #[inline]
     fn as_any(&self) -> &dyn Any {
         self
@@ -117,7 +112,7 @@ impl<T: 'static + Clone> Port for Bag<T> {
     }
 
     #[inline]
-    fn clear(&mut self) {
+    fn clear(&self) {
         self.borrow_mut().clear();
     }
 
@@ -126,45 +121,9 @@ impl<T: 'static + Clone> Port for Bag<T> {
         other.as_any().downcast_ref::<Bag<T>>().is_some()
     }
 
+    #[inline]
     fn propagate(&self, port_to: &dyn Port) {
         let port_to = port_to.as_any().downcast_ref::<Bag<T>>().unwrap();
         port_to.borrow_mut().extend_from_slice(&self.borrow());
-    }
-
-    #[inline]
-    fn new_coupling(&self, other: &dyn Port) -> Option<Box<dyn Coupling>> {
-        let other = other.as_any().downcast_ref::<Bag<T>>()?;
-        Some(Box::new(Edge{ port_from: InPort(self.clone()), port_to: OutPort(other.clone()) }))
-    }
-}
-
-impl<T: Port + ?Sized> Port for Box<T> {
-    #[inline]
-    fn as_any(&self) -> &dyn Any {
-        (**self).as_any()
-    }
-
-    #[inline]
-    fn is_empty(&self) -> bool {
-        (**self).is_empty()
-    }
-
-    #[inline]
-    fn clear(&mut self) {
-        (**self).clear();
-    }
-
-    #[inline]
-    fn is_compatible(&self, other: &dyn Port) -> bool {
-        (**self).is_compatible(other)
-    }
-
-    fn propagate(&self, port_to: &dyn Port) {
-        (**self).propagate(port_to)
-    }
-
-    #[inline]
-    fn new_coupling(&self, other: &dyn Port) -> Option<Box<dyn Coupling>> {
-        (**self).new_coupling(other)
     }
 }

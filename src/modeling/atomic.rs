@@ -1,4 +1,4 @@
-use super::component::Component;
+use super::Component;
 
 /// Interface for atomic DEVS models.
 pub trait Atomic {

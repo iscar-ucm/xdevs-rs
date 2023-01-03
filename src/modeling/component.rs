@@ -1,6 +1,6 @@
-use super::port::{InPort, OutPort, Port};
+use super::port::{Bag, InPort, OutPort, Port};
+use crate::{DynRef, Shared};
 use std::collections::HashMap;
-use crate::modeling::port::new_bag;
 
 /// DEVS component. Models must comprise a ['Component'] to fulfill the [`crate::simulation::Simulator`] trait.
 pub struct Component {
@@ -11,13 +11,13 @@ pub struct Component {
     /// Time for the next component state transition.
     t_next: f64,
     /// Keys are port IDs, and values are indices of input ports in [Component::input_ports].
-    input_map: HashMap<String, usize>,
+    in_map: HashMap<String, usize>,
     /// Keys are port IDs, and values are indices of output ports in [Component::output_ports].
-    output_map: HashMap<String, usize>,
+    out_map: HashMap<String, usize>,
     /// Input port set of the DEVS component.
-    in_ports: Vec<Box<dyn Port>>,
+    in_ports: Vec<Shared<dyn Port>>,
     /// Output port set of the DEVS component.
-    out_ports: Vec<Box<dyn Port>>,
+    out_ports: Vec<Shared<dyn Port>>,
 }
 
 impl Component {
@@ -27,8 +27,8 @@ impl Component {
             name: name.to_string(),
             t_last: 0.,
             t_next: f64::INFINITY,
-            input_map: HashMap::new(),
-            output_map: HashMap::new(),
+            in_map: HashMap::new(),
+            out_map: HashMap::new(),
             in_ports: Vec::new(),
             out_ports: Vec::new(),
         }
@@ -61,28 +61,26 @@ impl Component {
 
     /// Adds a new input port of type [`Port<Input, T>`] and returns a reference to it.
     /// It panics if there is already an input port with the same name.
-    pub fn add_in_port<T: 'static + Clone>(&mut self, name: &str) -> InPort<T> {
-        if self.input_map.contains_key(name) {
+    pub fn add_in_port<T: DynRef + Clone>(&mut self, name: &str) -> InPort<T> {
+        if self.in_map.contains_key(name) {
             panic!("component already contains input port with the name provided");
         }
-        let bag = new_bag();
-        let port = InPort::new(bag.clone());
-        self.input_map.insert(name.to_string(), self.in_ports.len());
-        self.in_ports.push(Box::new(bag));
-        port
+        self.in_map.insert(name.to_string(), self.in_ports.len());
+        let bag = Shared::new(Bag::new());
+        self.in_ports.push(bag.clone());
+        InPort::new(bag)
     }
 
     /// Adds a new output port of type [`Port<Output, T>`] and returns a reference to it.
     /// It panics if there is already an output port with the same name.
-    pub fn add_out_port<T: 'static + Clone>(&mut self, name: &str) -> OutPort<T> {
-        if self.output_map.contains_key(name) {
+    pub fn add_out_port<T: DynRef + Clone>(&mut self, name: &str) -> OutPort<T> {
+        if self.out_map.contains_key(name) {
             panic!("component already contains output port with the name provided");
         }
-        let bag = new_bag();
-        let port = OutPort::new(bag.clone());
-        self.output_map.insert(name.to_string(), self.out_ports.len());
-        self.out_ports.push(Box::new(bag));
-        port
+        self.out_map.insert(name.to_string(), self.out_ports.len());
+        let bag = Shared::new(Bag::new());
+        self.out_ports.push(bag.clone());
+        OutPort::new(bag)
     }
 
     /// Returns true if all the input ports of the model are empty.
@@ -99,16 +97,16 @@ impl Component {
 
     /// Returns a reference to an input port with the given name.
     /// If the component does not have any input port with this name, it returns [`None`].
-    pub(crate) fn get_in_port(&self, port_name: &str) -> Option<&dyn Port> {
-        let i = *self.input_map.get(port_name)?;
-        Some(self.in_ports.get(i)?)
+    pub(crate) fn get_in_port(&self, port_name: &str) -> Option<Shared<dyn Port>> {
+        let i = *self.in_map.get(port_name)?;
+        Some(self.in_ports.get(i)?.clone())
     }
 
     /// Returns a reference to an output port with the given name.
     /// If the component does not have any output port with this name, it returns [`None`].
-    pub(crate) fn get_out_port(&self, port_name: &str) -> Option<&dyn Port> {
-        let i = *self.output_map.get(port_name)?;
-        Some(self.out_ports.get(i)?)
+    pub(crate) fn get_out_port(&self, port_name: &str) -> Option<Shared<dyn Port>> {
+        let i = *self.out_map.get(port_name)?;
+        Some(self.out_ports.get(i)?.clone())
     }
 
     /// Clears all the input ports of the model.

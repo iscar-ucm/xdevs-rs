@@ -4,8 +4,7 @@ pub mod homod;
 pub mod li;
 
 use crate::modeling::*;
-use std::cell::RefCell;
-use std::rc::Rc;
+use std::sync::{Arc, Mutex};
 
 pub use hi::HI;
 pub use ho::HO;
@@ -29,18 +28,18 @@ struct DEVStoneAtomic {
     n_internals: usize,
     n_externals: usize,
     n_events: usize,
-    probe: Option<Rc<RefCell<TestProbe>>>,
+    probe: Option<Arc<Mutex<TestProbe>>>,
     input: InPort<usize>,
     output: OutPort<usize>,
 }
 
 impl DEVStoneAtomic {
-    pub fn new(name: &str, probe: Option<Rc<RefCell<TestProbe>>>) -> Self {
+    pub fn new(name: &str, probe: Option<Arc<Mutex<TestProbe>>>) -> Self {
         let mut component = Component::new(name);
         let input = component.add_in_port("input");
         let output = component.add_out_port("output");
         if let Some(p) = &probe {
-            p.borrow_mut().n_atomics += 1;
+            p.lock().unwrap().n_atomics += 1;
         }
         Self {
             sigma: f64::INFINITY,
@@ -69,7 +68,7 @@ impl Atomic for DEVStoneAtomic {
     #[inline]
     fn stop(&mut self) {
         if let Some(t) = &self.probe {
-            let mut x = t.borrow_mut();
+            let mut x = t.lock().unwrap();
             x.n_internals += self.n_internals;
             x.n_externals += self.n_externals;
             x.n_events += self.n_events;

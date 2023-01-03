@@ -1,7 +1,6 @@
 use super::{DEVStoneAtomic, DEVStoneSeeder, TestProbe};
 use crate::modeling::Coupled;
-use std::cell::RefCell;
-use std::rc::Rc;
+use std::sync::{Arc, Mutex};
 
 pub struct HI {
     pub coupled: Coupled,
@@ -19,7 +18,7 @@ impl HI {
         coupled
     }
 
-    fn _create_test(width: usize, depth: usize, probe: Rc<RefCell<TestProbe>>) -> Coupled {
+    fn _create_test(width: usize, depth: usize, probe: Arc<Mutex<TestProbe>>) -> Coupled {
         let mut coupled = Coupled::new("HI");
         let seeder = DEVStoneSeeder::new("seeder");
         let hi = Self::new(width, depth, Some(probe));
@@ -30,7 +29,7 @@ impl HI {
         coupled
     }
 
-    fn new(width: usize, depth: usize, probe: Option<Rc<RefCell<TestProbe>>>) -> Self {
+    fn new(width: usize, depth: usize, probe: Option<Arc<Mutex<TestProbe>>>) -> Self {
         // First we check the input parameters
         if width < 1 {
             panic!("width must be greater than 1")
@@ -69,9 +68,10 @@ impl HI {
         }
         // Before exiting, we update the probe if required
         if let Some(p) = probe {
-            p.borrow_mut().n_eics += coupled.eics.len();
-            p.borrow_mut().n_ics += coupled.ics.len();
-            p.borrow_mut().n_eocs += coupled.eocs.len()
+            let mut x = p.lock().unwrap();
+            x.n_eics += coupled.eics.len();
+            x.n_ics += coupled.ics.len();
+            x.n_eocs += coupled.eocs.len()
         }
         Self { coupled }
     }
@@ -105,17 +105,23 @@ mod tests {
     fn test_hi() {
         for width in (1..50).step_by(5) {
             for depth in (1..50).step_by(5) {
-                let probe = Rc::new(RefCell::new(TestProbe::default()));
+                let probe = Arc::new(Mutex::new(TestProbe::default()));
                 let coupled = HI::_create_test(width, depth, probe.clone());
-                assert_eq!(expected_atomics(width, depth), probe.borrow().n_atomics);
-                assert_eq!(expected_eics(width, depth), probe.borrow().n_eics);
-                assert_eq!(expected_ics(width, depth), probe.borrow().n_ics);
-                assert_eq!(depth, probe.borrow().n_eocs);
+                {
+                    let x = probe.lock().unwrap();
+                    assert_eq!(expected_atomics(width, depth), x.n_atomics);
+                    assert_eq!(expected_eics(width, depth), x.n_eics);
+                    assert_eq!(expected_ics(width, depth), x.n_ics);
+                    assert_eq!(depth, x.n_eocs);
+                }
                 let mut simulator = RootCoordinator::new(coupled);
                 simulator.simulate_time(f64::INFINITY);
-                assert_eq!(expected_internals(width, depth), probe.borrow().n_internals);
-                assert_eq!(expected_internals(width, depth), probe.borrow().n_externals);
-                assert_eq!(expected_internals(width, depth), probe.borrow().n_events);
+                {
+                    let x = probe.lock().unwrap();
+                    assert_eq!(expected_internals(width, depth), x.n_internals);
+                    assert_eq!(expected_internals(width, depth), x.n_externals);
+                    assert_eq!(expected_internals(width, depth), x.n_events);
+                }
             }
         }
     }

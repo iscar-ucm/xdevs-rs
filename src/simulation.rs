@@ -1,10 +1,11 @@
-use crate::modeling::atomic::Atomic;
-use crate::modeling::coupled::Coupled;
-use crate::modeling::Component;
+use crate::modeling::{Atomic, Component, Coupled};
+use crate::DynRef;
+#[cfg(feature = "parallel")]
+use rayon::prelude::*;
 use std::ops::{Deref, DerefMut};
 
 /// Interface for simulating DEVS models. All DEVS models must implement this trait.
-pub trait Simulator {
+pub trait Simulator: DynRef {
     /// Returns reference to inner [`Component`].
     fn get_component(&self) -> &Component;
 
@@ -51,7 +52,7 @@ pub trait Simulator {
     fn clear_ports(&mut self);
 }
 
-impl<T: Atomic> Simulator for T {
+impl<T: Atomic + DynRef> Simulator for T {
     #[inline]
     fn get_component(&self) -> &Component {
         Atomic::get_component(self)
@@ -140,21 +141,30 @@ impl Simulator for Coupled {
     fn collection(&mut self, t: f64) {
         if t >= self.get_t_next() {
             self.components.iter_mut().for_each(|c| c.collection(t));
-            self.ics.iter().for_each(|c| c.propagate());
-            self.eocs.iter().for_each(|c| c.propagate());
+            self.ics
+                .iter()
+                .for_each(|(p_from, p_to)| p_from.propagate(&**p_to));
+            self.eocs
+                .iter()
+                .for_each(|(p_from, p_to)| p_from.propagate(&**p_to));
         }
     }
 
     fn transition(&mut self, t: f64) {
-        self.eics.iter().for_each(|c| c.propagate());
-        let mut next_t = f64::INFINITY;
-        for component in self.components.iter_mut() {
-            component.transition(t);
-            let t = component.get_t_next();
-            if t < next_t {
-                next_t = t;
-            }
-        }
+        self.eics
+            .iter()
+            .for_each(|(p_from, p_to)| p_from.propagate(&**p_to));
+        #[cfg(not(feature = "parallel"))]
+        let iterator = self.components.iter_mut();
+        #[cfg(feature = "parallel")]
+        let iterator = self.components.par_iter_mut();
+        let next_t = iterator
+            .map(|c| {
+                c.transition(t);
+                c.get_t_next()
+            })
+            .min_by(|a, b| a.total_cmp(b))
+            .unwrap_or(f64::INFINITY);
         self.set_sim_t(t, next_t);
     }
 
