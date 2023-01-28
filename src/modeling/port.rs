@@ -1,6 +1,6 @@
-use crate::{DynRef, Mutable, Shared};
+use crate::{DynRef, Shared};
 use std::any::Any;
-use std::ops::{Deref, DerefMut};
+use std::cell::UnsafeCell;
 
 /// DEVS ports. It does not consider message types nor port directions.
 pub(crate) trait Port: DynRef {
@@ -20,33 +20,29 @@ pub(crate) trait Port: DynRef {
 }
 
 #[derive(Debug)]
-pub(crate) struct Bag<T>(Mutable<Vec<T>>);
+pub(crate) struct Bag<T>(UnsafeCell<Vec<T>>);
 
 impl<T> Bag<T> {
     pub(crate) fn new() -> Self {
-        Self(Mutable::new(Vec::new()))
+        Self(UnsafeCell::new(Vec::new()))
     }
 }
 
 #[cfg(feature = "parallel")]
+impl<T: Send> Send for Bag<T> {}
+
+#[cfg(feature = "parallel")]
+impl<T: Sync> Sync for Bag<T> {}
+
 impl<T> Bag<T> {
-    pub(crate) fn borrow(&self) -> impl Deref<Target = Vec<T>> + '_ {
-        self.0.read().unwrap()
+    #[inline]
+    pub(crate) fn borrow(&self) -> &Vec<T> {
+        unsafe {& *self.0.get()}
     }
 
-    pub(crate) fn borrow_mut(&self) -> impl DerefMut<Target = Vec<T>> + '_ {
-        self.0.write().unwrap()
-    }
-}
-
-#[cfg(not(feature = "parallel"))]
-impl<T> Bag<T> {
-    pub(crate) fn borrow(&self) -> impl Deref<Target = Vec<T>> + '_ {
-        self.0.borrow()
-    }
-
-    pub(crate) fn borrow_mut(&self) -> impl DerefMut<Target = Vec<T>> + '_ {
-        self.0.borrow_mut()
+    #[inline]
+    pub(crate) fn borrow_mut(&self) -> &mut Vec<T> {
+        unsafe {&mut *self.0.get()}
     }
 }
 
@@ -69,7 +65,7 @@ impl<T> InPort<T> {
 
     /// Returns a reference to the slice of messages of the underlying bag.
     #[inline]
-    pub fn get_values(&self) -> impl Deref<Target = Vec<T>> + '_ {
+    pub fn get_values(&self) -> &Vec<T> {
         self.0.borrow()
     }
 }
