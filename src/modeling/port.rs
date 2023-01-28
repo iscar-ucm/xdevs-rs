@@ -23,28 +23,28 @@ pub(crate) trait Port: DynRef {
 pub(crate) struct Bag<T>(UnsafeCell<Vec<T>>);
 
 impl<T> Bag<T> {
+    #[inline]
     pub(crate) fn new() -> Self {
         Self(UnsafeCell::new(Vec::new()))
     }
-}
 
-#[cfg(feature = "parallel")]
-impl<T: Send> Send for Bag<T> {}
-
-#[cfg(feature = "parallel")]
-impl<T: Sync> Sync for Bag<T> {}
-
-impl<T> Bag<T> {
     #[inline]
     pub(crate) fn borrow(&self) -> &Vec<T> {
-        unsafe {& *self.0.get()}
+        unsafe { &*self.0.get() }
     }
 
     #[inline]
+    #[allow(clippy::mut_from_ref)]
     pub(crate) fn borrow_mut(&self) -> &mut Vec<T> {
-        unsafe {&mut *self.0.get()}
+        unsafe { &mut *self.0.get() }
     }
 }
+
+#[cfg(feature = "parallel")]
+unsafe impl<T: Send> Send for Bag<T> {}
+
+#[cfg(feature = "parallel")]
+unsafe impl<T: Sync> Sync for Bag<T> {}
 
 /// Input port. It is just a wrapper of a [`Bag`].
 /// This structure only allows reading messages from the underlying bag.
@@ -120,6 +120,6 @@ impl<T: DynRef + Clone> Port for Bag<T> {
     #[inline]
     fn propagate(&self, port_to: &dyn Port) {
         let port_to = port_to.as_any().downcast_ref::<Bag<T>>().unwrap();
-        port_to.borrow_mut().extend_from_slice(&self.borrow());
+        port_to.borrow_mut().extend_from_slice(self.borrow());
     }
 }
