@@ -18,10 +18,8 @@ pub struct Coupled {
     eoc_map: HashMap<String, HashMap<String, usize>>,
     /// Components of the DEVS coupled model (serialized for better performance).
     pub(crate) components: Vec<Box<dyn Simulator>>,
-    /// External input couplings (serialized for better performance).
-    pub(crate) eics: Vec<(Shared<dyn Port>, Shared<dyn Port>)>,
-    /// Internal couplings (serialized for better performance).
-    pub(crate) ics: Vec<(Shared<dyn Port>, Shared<dyn Port>)>,
+    /// External input and internal couplings (serialized for better performance).
+    pub(crate) xics: Vec<(Shared<dyn Port>, Shared<dyn Port>)>,
     /// External output couplings (serialized for better performance).
     pub(crate) eocs: Vec<(Shared<dyn Port>, Shared<dyn Port>)>,
 }
@@ -36,10 +34,29 @@ impl Coupled {
             ic_map: HashMap::new(),
             eoc_map: HashMap::new(),
             components: Vec::new(),
-            eics: Vec::new(),
-            ics: Vec::new(),
+            xics: Vec::new(),
             eocs: Vec::new(),
         }
+    }
+
+    /// Returns the number of components in the coupled model.
+    pub fn n_components(&self) -> usize {
+        self.components.len()
+    }
+
+    /// Returns the number of external input couplings in the coupled model.
+    pub fn n_eics(&self) -> usize {
+        self.eic_map.values().map(|eics| eics.len()).sum()
+    }
+
+    /// Returns the number of internal couplings in the coupled model.
+    pub fn n_ics(&self) -> usize {
+        self.ic_map.values().map(|ics| ics.len()).sum()
+    }
+
+    /// Returns the number of external output couplings in the coupled model.
+    pub fn n_eocs(&self) -> usize {
+        self.eocs.len()
     }
 
     /// Adds a new input port of type [`Port<Input, T>`] and returns a reference to it.
@@ -100,12 +117,12 @@ impl Coupled {
         }
         let source_key = port_from.to_string();
         let destination_key = component_to.to_string() + "-" + port_to;
-        let coups = self.eic_map.entry(source_key).or_default();
-        if coups.contains_key(&destination_key) {
+        let coups = self.eic_map.entry(destination_key).or_default();
+        if coups.contains_key(&source_key) {
             panic!("coupling already exists");
         }
-        coups.insert(destination_key, self.eics.len());
-        self.eics.push((p_from, p_to));
+        coups.insert(source_key, self.xics.len());
+        self.xics.push((p_to, p_from));
     }
 
     /// Adds a new IC to the model.
@@ -142,12 +159,12 @@ impl Coupled {
         }
         let source_key = component_from.to_string() + "-" + port_from;
         let destination_key = component_to.to_string() + "-" + port_to;
-        let coups = self.ic_map.entry(source_key).or_default();
-        if coups.contains_key(&destination_key) {
+        let coups = self.ic_map.entry(destination_key).or_default();
+        if coups.contains_key(&source_key) {
             panic!("coupling already exists");
         }
-        coups.insert(destination_key, self.ics.len());
-        self.ics.push((p_from, p_to));
+        coups.insert(source_key, self.xics.len());
+        self.xics.push((p_to, p_from));
     }
 
     /// Adds a new EOC to the model.
@@ -175,11 +192,11 @@ impl Coupled {
         }
         let source_key = component_from.to_string() + "-" + port_from;
         let destination_key = port_to.to_string();
-        let coups = self.eoc_map.entry(source_key).or_default();
-        if coups.contains_key(&destination_key) {
+        let coups = self.eoc_map.entry(destination_key).or_default();
+        if coups.contains_key(&source_key) {
             panic!("coupling already exists");
         }
-        coups.insert(destination_key, self.eocs.len());
-        self.eocs.push((p_from, p_to));
+        coups.insert(source_key, self.eocs.len());
+        self.eocs.push((p_to, p_from));
     }
 }

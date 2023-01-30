@@ -65,9 +65,9 @@ impl LI {
         // Before exiting, we update the probe if required
         if let Some(p) = probe {
             let mut x = p.lock().unwrap();
-            x.n_eics += coupled.eics.len();
-            x.n_ics += coupled.ics.len();
-            x.n_eocs += coupled.eocs.len()
+            x.n_eics += coupled.n_eics();
+            x.n_ics += coupled.n_ics();
+            x.n_eocs += coupled.n_eocs();
         }
         Self { coupled }
     }

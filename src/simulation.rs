@@ -1,6 +1,6 @@
 use crate::modeling::{Atomic, Component, Coupled};
 use crate::DynRef;
-#[cfg(feature = "parallel")]
+#[cfg(feature = "par_any")]
 use rayon::prelude::*;
 use std::ops::{Deref, DerefMut};
 
@@ -121,43 +121,53 @@ impl Simulator for Coupled {
     }
 
     fn start(&mut self, t_start: f64) {
-        let mut t_next = f64::INFINITY;
-        for component in self.components.iter_mut() {
-            component.start(t_start);
-            let t = component.get_t_next();
-            if t < t_next {
-                t_next = t;
-            }
-        }
+        #[cfg(feature = "par_start")]
+        let iter = self.components.par_iter_mut();
+        #[cfg(not(feature = "par_start"))]
+        let iter = self.components.iter_mut();
+        let t_next = iter
+            .map(|c| {
+                c.start(t_start);
+                c.get_t_next()
+            })
+            .min_by(|a, b| a.total_cmp(b))
+            .unwrap_or(f64::INFINITY);
+
         self.set_sim_t(t_start, t_next);
     }
 
     #[inline]
     fn stop(&mut self, t_stop: f64) {
-        self.components.iter_mut().for_each(|c| c.stop(t_stop));
+        #[cfg(feature = "par_stop")]
+        let iter = self.components.par_iter_mut();
+        #[cfg(not(feature = "par_stop"))]
+        let iter = self.components.iter_mut();
+        iter.for_each(|c| c.stop(t_stop));
         self.set_sim_t(t_stop, f64::INFINITY);
     }
 
     fn collection(&mut self, t: f64) {
         if t >= self.get_t_next() {
-            self.components.iter_mut().for_each(|c| c.collection(t));
-            self.ics
-                .iter()
-                .for_each(|(p_from, p_to)| p_from.propagate(&**p_to));
+            #[cfg(feature = "par_collection")]
+            let iter = self.components.par_iter_mut();
+            #[cfg(not(feature = "par_collection"))]
+            let iter = self.components.iter_mut();
+            iter.for_each(|c| c.collection(t));
+
             self.eocs
                 .iter()
-                .for_each(|(p_from, p_to)| p_from.propagate(&**p_to));
+                .for_each(|(p_to, p_from)| p_from.propagate(&**p_to));
         }
     }
 
     fn transition(&mut self, t: f64) {
-        self.eics
+        self.xics
             .iter()
-            .for_each(|(p_from, p_to)| p_from.propagate(&**p_to));
-        #[cfg(not(feature = "parallel"))]
-        let iterator = self.components.iter_mut();
-        #[cfg(feature = "parallel")]
+            .for_each(|( p_to, p_from)| p_from.propagate(&**p_to));
+        #[cfg(feature = "par_transition")]
         let iterator = self.components.par_iter_mut();
+        #[cfg(not(feature = "par_transition"))]
+        let iterator = self.components.iter_mut();
         let next_t = iterator
             .map(|c| {
                 c.transition(t);

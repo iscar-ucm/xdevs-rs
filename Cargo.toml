@@ -16,7 +16,16 @@ categories = ["simulation"]
 rayon = { version = "1.6", optional = true }
 
 [features]
-parallel = ["rayon"]
+par_any = ["rayon"]
+par_start = ["par_any"]
+par_collection = ["par_any"]
+par_eoc = ["par_any"]
+par_xic = ["par_any"]
+par_transition = ["par_any"]
+par_stop = ["par_any"]
+par_xxc = ["par_eoc", "par_xic"]
+par_sim = ["par_collection", "par_xxc", "par_transition"]
+par_all = ["par_start", "par_sim", "par_stop"]
 
 [profile.release]
 lto = true
