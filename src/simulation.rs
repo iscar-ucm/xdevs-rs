@@ -143,6 +143,7 @@ impl Simulator for Coupled {
         #[cfg(not(feature = "par_stop"))]
         let iter = self.components.iter_mut();
         iter.for_each(|c| c.stop(t_stop));
+
         self.set_sim_t(t_stop, f64::INFINITY);
     }
 
@@ -154,16 +155,31 @@ impl Simulator for Coupled {
             let iter = self.components.iter_mut();
             iter.for_each(|c| c.collection(t));
 
+            #[cfg(feature = "par_eoc")]
+            self.eocs.par_iter().for_each(|(port_to, ports_from)| {
+                ports_from
+                    .iter()
+                    .for_each(|port_from| port_from.propagate(&**port_to))
+            });
+            #[cfg(not(feature = "par_eoc"))]
             self.eocs
                 .iter()
-                .for_each(|(p_to, p_from)| p_from.propagate(&**p_to));
+                .for_each(|(port_to, port_from)| port_from.propagate(&**port_to));
         }
     }
 
     fn transition(&mut self, t: f64) {
+        #[cfg(feature = "par_xic")]
+        self.xics.par_iter().for_each(|(port_to, ports_from)| {
+            ports_from
+                .iter()
+                .for_each(|port_from| port_from.propagate(&**port_to))
+        });
+        #[cfg(not(feature = "par_xic"))]
         self.xics
             .iter()
-            .for_each(|( p_to, p_from)| p_from.propagate(&**p_to));
+            .for_each(|(port_to, port_from)| port_from.propagate(&**port_to));
+
         #[cfg(feature = "par_transition")]
         let iterator = self.components.par_iter_mut();
         #[cfg(not(feature = "par_transition"))]
@@ -171,6 +187,7 @@ impl Simulator for Coupled {
         let next_t = iterator
             .map(|c| {
                 c.transition(t);
+                c.clear_ports();
                 c.get_t_next()
             })
             .min_by(|a, b| a.total_cmp(b))
@@ -180,9 +197,8 @@ impl Simulator for Coupled {
 
     #[inline]
     fn clear_ports(&mut self) {
-        self.components.iter_mut().for_each(|c| c.clear_ports());
         self.component.clear_output();
-        self.component.clear_input()
+        self.component.clear_input();
     }
 }
 

@@ -4,6 +4,15 @@ use crate::simulation::Simulator;
 use crate::{DynRef, Shared};
 use std::collections::HashMap;
 
+#[cfg(feature = "par_xic")]
+type XICLocation = (usize, usize);
+#[cfg(not(feature = "par_xic"))]
+type XICLocation = usize;
+#[cfg(feature = "par_eoc")]
+type EOCLocation = (usize, usize);
+#[cfg(not(feature = "par_eoc"))]
+type EOCLocation = usize;
+
 /// Coupled DEVS model.
 pub struct Coupled {
     /// Component wrapped by the coupled model.
@@ -11,16 +20,22 @@ pub struct Coupled {
     /// Keys are IDs of subcomponents, and values are indices of [`Coupled::comps_vec`].
     comps_map: HashMap<String, usize>,
     /// External input couplings.
-    eic_map: HashMap<String, HashMap<String, usize>>,
+    eic_map: HashMap<String, HashMap<String, XICLocation>>,
     /// Internal couplings.
-    ic_map: HashMap<String, HashMap<String, usize>>,
+    ic_map: HashMap<String, HashMap<String, XICLocation>>,
     /// External output couplings.
-    eoc_map: HashMap<String, HashMap<String, usize>>,
+    eoc_map: HashMap<String, HashMap<String, EOCLocation>>,
     /// Components of the DEVS coupled model (serialized for better performance).
     pub(crate) components: Vec<Box<dyn Simulator>>,
     /// External input and internal couplings (serialized for better performance).
+    #[cfg(feature = "par_xic")]
+    pub(crate) xics: Vec<(Shared<dyn Port>, Vec<Shared<dyn Port>>)>,
+    #[cfg(not(feature = "par_xic"))]
     pub(crate) xics: Vec<(Shared<dyn Port>, Shared<dyn Port>)>,
     /// External output couplings (serialized for better performance).
+    #[cfg(feature = "par_eoc")]
+    pub(crate) eocs: Vec<(Shared<dyn Port>, Vec<Shared<dyn Port>>)>,
+    #[cfg(not(feature = "par_eoc"))]
     pub(crate) eocs: Vec<(Shared<dyn Port>, Shared<dyn Port>)>,
 }
 
@@ -121,8 +136,25 @@ impl Coupled {
         if coups.contains_key(&source_key) {
             panic!("coupling already exists");
         }
-        coups.insert(source_key, self.xics.len());
-        self.xics.push((p_to, p_from));
+
+        #[cfg(feature = "par_xic")]
+        {
+            let i = match coups.values().next() {
+                Some((i, _)) => *i,
+                None => {
+                    self.xics.push((p_to, Vec::new()));
+                    self.xics.len() - 1
+                }
+            };
+            let eics = &mut self.xics[i].1;
+            coups.insert(source_key, (i, eics.len()));
+            eics.push(p_from);
+        }
+        #[cfg(not(feature = "par_xic"))]
+        {
+            coups.insert(source_key, self.xics.len());
+            self.xics.push((p_to, p_from));
+        }
     }
 
     /// Adds a new IC to the model.
@@ -163,8 +195,25 @@ impl Coupled {
         if coups.contains_key(&source_key) {
             panic!("coupling already exists");
         }
-        coups.insert(source_key, self.xics.len());
-        self.xics.push((p_to, p_from));
+
+        #[cfg(feature = "par_xic")]
+        {
+            let i = match coups.values().next() {
+                Some((i, _)) => *i,
+                None => {
+                    self.xics.push((p_to, Vec::new()));
+                    self.xics.len() - 1
+                }
+            };
+            let ics = &mut self.xics[i].1;
+            coups.insert(source_key, (i, ics.len()));
+            ics.push(p_from);
+        }
+        #[cfg(not(feature = "par_xic"))]
+        {
+            coups.insert(source_key, self.xics.len());
+            self.xics.push((p_to, p_from));
+        }
     }
 
     /// Adds a new EOC to the model.
@@ -196,7 +245,24 @@ impl Coupled {
         if coups.contains_key(&source_key) {
             panic!("coupling already exists");
         }
-        coups.insert(source_key, self.eocs.len());
-        self.eocs.push((p_to, p_from));
+
+        #[cfg(feature = "par_eoc")]
+        {
+            let i = match coups.values().next() {
+                Some((i, _)) => *i,
+                None => {
+                    self.eocs.push((p_to, Vec::new()));
+                    self.eocs.len() - 1
+                }
+            };
+            let eocs = &mut self.eocs[i].1;
+            coups.insert(source_key, (i, eocs.len()));
+            eocs.push(p_from);
+        }
+        #[cfg(not(feature = "par_eoc"))]
+        {
+            coups.insert(source_key, self.eocs.len());
+            self.eocs.push((p_to, p_from));
+        }
     }
 }
