@@ -1,17 +1,11 @@
-use std::any::{type_name, Any};
-use std::cell::RefCell;
-use std::fmt::{Debug, Display, Formatter, Result};
-use std::marker::PhantomData;
-use std::ops::Deref;
-use std::rc::Rc;
+use crate::{DynRef, Shared};
+use std::any::Any;
+use std::cell::UnsafeCell;
 
-/// Abstract DEVS ports. This trait does not consider message types nor port directions.
-pub(crate) trait AbstractPort: Debug + Display {
+/// Trait implemented by DEVS ports. It does not consider message types nor port directions.
+pub(crate) trait Port: DynRef {
     /// Port-to-any conversion.
     fn as_any(&self) -> &dyn Any;
-
-    /// Returns the name of the port.
-    fn get_name(&self) -> &str;
 
     /// Returns `true` if the port does not contain any value.
     fn is_empty(&self) -> bool;
@@ -19,234 +13,173 @@ pub(crate) trait AbstractPort: Debug + Display {
     /// It clears all the values in the port.
     fn clear(&self);
 
-    /// Checks if the port is compatible with other.
-    fn is_compatible(&self, other: &dyn AbstractPort) -> bool;
+    /// Returns `true` if other port is compatible.
+    fn is_compatible(&self, other: &dyn Port) -> bool;
 
-    /// Propagates values from other port to the port.
-    fn propagate(&self, other: &dyn AbstractPort);
+    /// Propagates messages from the port to other receiving port.
+    ///
+    /// # Safety
+    ///
+    /// The caller must ensure that it fulfills all the following invariants:
+    /// - The caller is a [`super::Coupled`] model.
+    /// - The caller is propagating messages according to its couplings.
+    unsafe fn propagate(&self, port_to: &dyn Port);
 }
 
-/// Directionless DEVS port with an associated message type.
+/// Bag of DEVS messages.
+/// It is just a wrapper of an [`UnsafeCell`] containing a vector of messages.
 #[derive(Debug)]
-pub(crate) struct RawPort<T> {
-    /// Name of the port.
-    name: String,
-    /// Message bag.
-    bag: RefCell<Vec<T>>,
-}
+pub(crate) struct Bag<T>(UnsafeCell<Vec<T>>);
 
-impl<T> RawPort<T> {
-    /// Constructor function.
-    pub(crate) fn new(name: &str) -> Self {
-        Self {
-            name: name.to_string(),
-            bag: RefCell::new(Vec::new()),
-        }
+impl<T> Bag<T> {
+    /// Creates a new message bag.
+    #[inline]
+    pub(crate) fn new() -> Self {
+        Self(UnsafeCell::new(Vec::new()))
     }
 
-    /// It checks if the message bag of the port is empty.
-    pub(crate) fn is_empty(&self) -> bool {
-        self.bag.borrow().is_empty()
+    /// Returns a reference to the vector of messages in the bag.
+    ///
+    /// # Safety:
+    ///
+    /// The caller must ensure that it fulfills all the following invariants:
+    /// - The bag corresponds to an [`InPort`] of an implementer of the [`super::Atomic`] trait.
+    /// - The implementer only calls this function inside the [`super::Atomic::delta_ext`] method.
+    ///
+    /// Alternatively, the [`super::Coupled`] struct can call this method when propagating messages.
+    #[inline]
+    pub(crate) unsafe fn borrow(&self) -> &Vec<T> {
+        &*self.0.get()
     }
 
-    /// It returns a reference to the message bag of the port.
-    pub(crate) fn get_values(&self) -> impl Deref<Target = Vec<T>> + '_ {
-        self.bag.borrow()
-    }
-
-    /// It adds a new value to the message bag of the port.
-    pub(crate) fn add_value(&self, value: T) {
-        self.bag.borrow_mut().push(value);
-    }
-}
-
-impl<T: Clone> RawPort<T> {
-    /// It adds multiple values to the message bag of the port.
-    pub(crate) fn add_values(&self, values: &[T]) {
-        self.bag.borrow_mut().extend_from_slice(values);
-    }
-}
-
-impl<T: 'static> RawPort<T> {
-    /// Tries to convert a trait object [`AbstractPort`] to a reference to [`TypedPort<T>`].
-    pub(crate) fn try_upgrade(port: &dyn AbstractPort) -> Option<&RawPort<T>> {
-        port.as_any().downcast_ref::<RawPort<T>>()
-    }
-
-    /// Converts a trait object [`AbstractPort`] to a reference to [`TypedPort<T>`].
-    /// It panics if this conversion is not possible.
-    pub(crate) fn upgrade(port: &dyn AbstractPort) -> &RawPort<T> {
-        RawPort::<T>::try_upgrade(port)
-            .unwrap_or_else(|| panic!("port is incompatible with value type"))
-    }
-
-    /// Checks if a trait object [`AbstractPort`] can be upgraded to [`typedPort<T>`].
-    pub(crate) fn is_compatible(port: &dyn AbstractPort) -> bool {
-        RawPort::<T>::try_upgrade(port).is_some()
+    /// Returns a mutable reference to the vector of messages in the bag.
+    ///
+    /// # Safety:
+    ///
+    /// The caller must ensure that it fulfills all the following invariants:
+    /// - The bag corresponds to an [`OutPort`] of an implementer of the [`super::Atomic`] trait.
+    /// - The implementer only calls this function inside the [`super::Atomic::lambda`] method.
+    ///
+    /// Alternatively, the [`super::Coupled`] struct can call this method when propagating messages.
+    #[inline]
+    #[allow(clippy::mut_from_ref)]
+    pub(crate) unsafe fn borrow_mut(&self) -> &mut Vec<T> {
+        &mut *self.0.get()
     }
 }
 
-impl<T> Display for RawPort<T> {
-    fn fmt(&self, f: &mut Formatter<'_>) -> Result {
-        write!(f, "{}<{}>", self.name, type_name::<T>())
+#[cfg(feature = "par_any")]
+// Safety: if all the invariants are met, then a bag can be safely shared among threads.
+unsafe impl<T: Send> Send for Bag<T> {}
+
+#[cfg(feature = "par_any")]
+// Safety: if all the invariants are met, then a bag can be safely shared among threads.
+unsafe impl<T: Sync> Sync for Bag<T> {}
+
+/// Input port. This structure only allows reading messages. Thus, it cannot inject messages.
+///
+/// # Safety
+///
+/// When calling **any** of its method, the caller must ensure that it fulfills all the following invariants:
+/// - The caller implements the [`super::Atomic`] trait.
+/// - The caller created this port via the [`super::Component::add_in_port`] method of its inner [`super::Component`].
+/// - The implementer only calls these methods inside the [`super::Atomic::delta_ext`] method.
+#[derive(Clone, Debug)]
+pub struct InPort<T>(Shared<Bag<T>>);
+
+impl<T> InPort<T> {
+    pub(crate) fn new(bag: Shared<Bag<T>>) -> Self {
+        Self(bag)
+    }
+
+    /// Returns `true` if the underlying bag is empty. Otherwise, it returns `false`.
+    ///
+    /// # Safety
+    ///
+    /// The caller must fulfill all the invariants of the [`InPort`] struct.
+    #[inline]
+    pub fn is_empty(&self) -> bool {
+        // Safety: we are executing a delta_ext function of the corresponding atomic model
+        unsafe { self.0.borrow() }.is_empty()
+    }
+
+    /// Returns a reference to the slice of messages of the underlying bag.
+    ///
+    /// # Safety
+    ///
+    /// The caller must fulfill all the invariants of the [`InPort`] struct.
+    #[inline]
+    pub fn get_values(&self) -> &Vec<T> {
+        // Safety: we are executing a delta_ext function of the corresponding atomic model
+        unsafe { self.0.borrow() }
     }
 }
 
-impl<T: 'static + Clone + Debug> AbstractPort for RawPort<T> {
+/// Output port. This structure only injecting messages. Thus, it cannot read messages.
+///
+/// # Safety
+///
+/// When calling **any** of its method, the caller must ensure that it fulfills all the following invariants:
+/// - The caller implements the [`super::Atomic`] trait.
+/// - The caller created this port via the [`super::Component::add_out_port`] method of its inner [`super::Component`].
+/// - The implementer only calls these methods inside the [`super::Atomic::lambda`] method.
+#[derive(Clone, Debug)]
+pub struct OutPort<T>(Shared<Bag<T>>);
+
+impl<T> OutPort<T> {
+    pub(crate) fn new(bag: Shared<Bag<T>>) -> Self {
+        Self(bag)
+    }
+
+    /// Adds a new value to the output port.
+    ///
+    /// # Safety
+    ///
+    /// The caller must fulfill all the invariants of the [`OutPort`] struct.
+    #[inline]
+    pub fn add_value(&self, value: T) {
+        // Safety: we are executing a lambda function of the corresponding atomic model
+        unsafe { self.0.borrow_mut() }.push(value);
+    }
+}
+
+impl<T: Clone> OutPort<T> {
+    /// Adds new values from a slice to the output port.
+    ///
+    /// # Safety
+    ///
+    /// The caller must fulfill all the invariants of the [`OutPort`] struct.
+    #[inline]
+    pub fn add_values(&self, values: &[T]) {
+        // Safety: we are executing a lambda function of the corresponding atomic model
+        unsafe { self.0.borrow_mut() }.extend_from_slice(values);
+    }
+}
+
+impl<T: DynRef + Clone> Port for Bag<T> {
+    #[inline]
     fn as_any(&self) -> &dyn Any {
         self
     }
 
-    fn get_name(&self) -> &str {
-        &self.name
-    }
-
+    #[inline]
     fn is_empty(&self) -> bool {
-        self.bag.borrow().is_empty()
+        unsafe { self.borrow().is_empty() }
     }
 
+    #[inline]
     fn clear(&self) {
-        self.bag.borrow_mut().clear();
+        unsafe { self.borrow_mut().clear() };
     }
 
-    fn is_compatible(&self, other: &dyn AbstractPort) -> bool {
-        RawPort::<T>::is_compatible(other)
+    #[inline]
+    fn is_compatible(&self, other: &dyn Port) -> bool {
+        other.as_any().downcast_ref::<Bag<T>>().is_some()
     }
 
-    fn propagate(&self, port_from: &dyn AbstractPort) {
-        self.bag
-            .borrow_mut()
-            .extend_from_slice(&*RawPort::<T>::upgrade(port_from).bag.borrow());
-    }
-}
-
-/// Phantom struct for marking ports as input.
-#[derive(Clone, Copy, Debug)]
-pub struct Input();
-
-/// Phantom struct for marking ports as output.
-#[derive(Clone, Copy, Debug)]
-pub struct Output();
-
-/// Directive DEVS port with an associated message type.
-/// This struct is useful for two reasons. First, it hides the Rc stuff from the users.
-/// Second, it constraints the methods available depending on their direction.
-#[derive(Clone, Debug)]
-pub struct Port<D, T>(pub(crate) Rc<RawPort<T>>, PhantomData<D>);
-
-impl<D, T> Port<D, T> {
-    pub(crate) fn new(port: Rc<RawPort<T>>) -> Self {
-        Self(port, PhantomData::default())
-    }
-
-    pub fn get_name(&self) -> &str {
-        &self.0.name
-    }
-}
-
-/// For input ports, we can only check if they are empty and read their values.
-impl<T> Port<Input, T> {
-    pub fn is_empty(&self) -> bool {
-        self.0.is_empty()
-    }
-
-    pub fn get_values(&self) -> impl Deref<Target = Vec<T>> + '_ {
-        self.0.get_values()
-    }
-}
-
-/// For output ports, we can only add new values.
-impl<T> Port<Output, T> {
-    /// It adds a new value to the message bag of the port.
-    pub fn add_value(&self, value: T) {
-        self.0.add_value(value);
-    }
-}
-
-impl<T: Clone> Port<Output, T> {
-    pub fn add_values(&self, value: &[T]) {
-        self.0.add_values(value);
-    }
-}
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-
-    #[test]
-    fn test_port() {
-        let port_a = RawPort::new("port_a");
-        assert_eq!("port_a", port_a.get_name());
-        assert_eq!("port_a<usize>", port_a.to_string());
-        assert!(port_a.is_empty());
-        assert_eq!(0, port_a.get_values().len());
-
-        port_a.add_value(0);
-        assert!(!port_a.is_empty());
-        assert_eq!(1, port_a.get_values().len());
-
-        port_a.clear();
-        assert!(port_a.is_empty());
-        assert_eq!(0, port_a.get_values().len());
-
-        for i in 0..10 {
-            port_a.add_value(i);
-            assert!(port_a.get_values().get(i).is_some());
-            assert!(port_a.get_values().get(i + 1).is_none());
-            assert_eq!(i + 1, port_a.get_values().len());
-        }
-
-        let mut i = 0;
-        let vals = port_a.get_values();
-        for event in vals.iter() {
-            assert_eq!(&i, event);
-            i += 1;
-        }
-    }
-
-    #[test]
-    fn test_port_trait() {
-        let port_a = RawPort::<i32>::new("port_a");
-
-        assert!(RawPort::<i32>::is_compatible(&port_a));
-        assert!(!RawPort::<i64>::is_compatible(&port_a));
-        assert!(RawPort::<i32>::try_upgrade(&port_a).is_some());
-        assert!(RawPort::<i64>::try_upgrade(&port_a).is_none());
-    }
-
-    #[test]
-    #[should_panic(expected = "port is incompatible with value type")]
-    fn test_port_upgrade_panics() {
-        let port_a = RawPort::<i32>::new("port_a");
-        RawPort::<i64>::upgrade(&port_a);
-    }
-
-    #[test]
-    fn test_propagate() {
-        let port_a = RawPort::new("port_a");
-        let port_b = RawPort::new("port_b");
-
-        for i in 0..10 {
-            port_a.add_value(i);
-            port_b.add_value(10 + i);
-        }
-
-        port_a.propagate(&port_b);
-        assert_eq!(20, port_a.get_values().len());
-        assert_eq!(10, port_b.get_values().len());
-
-        port_b.add_value(20);
-        assert_eq!(20, port_a.get_values().len());
-        assert_eq!(11, port_b.get_values().len());
-
-        port_a.clear();
-        assert_eq!(0, port_a.get_values().len());
-        assert_eq!(11, port_b.get_values().len());
-
-        port_a.propagate(&port_b);
-        assert_eq!(11, port_a.get_values().len());
-
-        port_a.clear();
-        port_b.clear();
+    #[inline]
+    unsafe fn propagate(&self, port_to: &dyn Port) {
+        let port_to = port_to.as_any().downcast_ref::<Bag<T>>().unwrap();
+        unsafe { port_to.borrow_mut().extend_from_slice(self.borrow()) };
     }
 }

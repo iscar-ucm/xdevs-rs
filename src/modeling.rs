@@ -6,4 +6,4 @@ pub mod port;
 pub use atomic::Atomic;
 pub use component::Component;
 pub use coupled::Coupled;
-pub use port::{Input, Output, Port};
+pub use port::{InPort, OutPort};

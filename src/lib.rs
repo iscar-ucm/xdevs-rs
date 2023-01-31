@@ -2,39 +2,22 @@ pub mod devstone;
 pub mod modeling;
 pub mod simulation;
 
-use std::fmt::{Display, Formatter, Result};
-use std::hash::{Hash, Hasher};
-use std::ops::Deref;
+#[cfg(not(feature = "par_any"))]
 use std::rc::Rc;
+#[cfg(feature = "par_any")]
+use std::sync::Arc;
 
-/// Hashable Rc pointer.
-#[derive(Debug, Clone)]
-struct RcHash<T: ?Sized>(Rc<T>);
+#[cfg(not(feature = "par_any"))]
+type Shared<T> = Rc<T>;
+#[cfg(feature = "par_any")]
+type Shared<T> = Arc<T>;
 
-impl<T: ?Sized> Deref for RcHash<T> {
-    type Target = T;
+#[cfg(not(feature = "par_any"))]
+pub trait DynRef: 'static {}
+#[cfg(feature = "par_any")]
+pub trait DynRef: 'static + Sync + Send {}
 
-    fn deref(&self) -> &Self::Target {
-        &self.0
-    }
-}
-
-impl<T: ?Sized> PartialEq for RcHash<T> {
-    fn eq(&self, other: &Self) -> bool {
-        Rc::ptr_eq(&self.0, &other.0)
-    }
-}
-
-impl<T: Display + ?Sized> Display for RcHash<T> {
-    fn fmt(&self, f: &mut Formatter<'_>) -> Result {
-        Display::fmt(&self.0, f)
-    }
-}
-
-impl<T: ?Sized> Eq for RcHash<T> {}
-
-impl<T: ?Sized> Hash for RcHash<T> {
-    fn hash<H: Hasher>(&self, state: &mut H) {
-        (Rc::as_ptr(&self.0) as *const T).hash(state);
-    }
-}
+#[cfg(not(feature = "par_any"))]
+impl<T: 'static + ?Sized> DynRef for T {}
+#[cfg(feature = "par_any")]
+impl<T: 'static + Sync + Send + ?Sized> DynRef for T {}

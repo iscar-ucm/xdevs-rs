@@ -4,14 +4,13 @@ use std::env;
 use xdevs::modeling::*;
 use xdevs::simulation::*;
 
-#[derive(Debug)]
 struct Generator {
     component: Component,
     sigma: f64,
     period: f64,
     count: usize,
-    input: Port<Input, bool>,
-    output: Port<Output, usize>,
+    input: InPort<bool>,
+    output: OutPort<usize>,
 }
 impl Generator {
     fn new(name: &str, period: f64) -> Self {
@@ -53,14 +52,13 @@ impl Atomic for Generator {
     }
 }
 
-#[derive(Debug)]
 struct Processor {
     component: Component,
     sigma: f64,
     time: f64,
     job: Option<usize>,
-    input: Port<Input, usize>,
-    output: Port<Output, (usize, f64)>,
+    input: InPort<usize>,
+    output: OutPort<(usize, f64)>,
 }
 impl Processor {
     fn new(name: &str, time: f64) -> Self {
@@ -110,14 +108,14 @@ impl Atomic for Processor {
     }
 }
 
-#[derive(Debug)]
 struct Transducer {
     component: Component,
     sigma: f64,
-    input_g: Port<Input, usize>,
-    input_p: Port<Input, (usize, f64)>,
-    output: Port<Output, bool>,
+    input_g: InPort<usize>,
+    input_p: InPort<(usize, f64)>,
+    output: OutPort<bool>,
 }
+
 impl Transducer {
     fn new(name: &str, time: f64) -> Self {
         let mut component = Component::new(name);
@@ -171,7 +169,6 @@ impl Atomic for Transducer {
     }
 }
 
-#[derive(Debug)]
 struct ExperimentalFrame {
     coupled: Coupled,
 }
