@@ -2,7 +2,7 @@ use crate::{DynRef, Shared};
 use std::any::Any;
 use std::cell::UnsafeCell;
 
-/// DEVS ports. It does not consider message types nor port directions.
+/// Trait implemented by DEVS ports. It does not consider message types nor port directions.
 pub(crate) trait Port: DynRef {
     /// Port-to-any conversion.
     fn as_any(&self) -> &dyn Any;
@@ -17,7 +17,13 @@ pub(crate) trait Port: DynRef {
     fn is_compatible(&self, other: &dyn Port) -> bool;
 
     /// Propagates messages from the port to other receiving port.
-    fn propagate(&self, port_to: &dyn Port);
+    ///
+    /// # Safety
+    ///
+    /// The caller must ensure that it fulfills all the following invariants:
+    /// - The caller is a [`super::Coupled`] model.
+    /// - The caller is propagating messages according to its couplings.
+    unsafe fn propagate(&self, port_to: &dyn Port);
 }
 
 /// Bag of DEVS messages.
@@ -35,78 +41,118 @@ impl<T> Bag<T> {
     /// Returns a reference to the vector of messages in the bag.
     ///
     /// # Safety:
-    /// The DEVS simulation workflow already avoids multiple unsafe conditions.
-    /// The xDEVS crate this only when propagating messages from this bag to other bags.
-    /// On the other hand, only [`InPort`] structs are allowed to execute this method.
-    /// All the [`InPort`] methods must **ONLY** be executed during an [`Atomic::delta_ext`] method.
+    ///
+    /// The caller must ensure that it fulfills all the following invariants:
+    /// - The bag corresponds to an [`InPort`] of an implementer of the [`super::Atomic`] trait.
+    /// - The implementer only calls this function inside the [`super::Atomic::delta_ext`] method.
+    ///
+    /// Alternatively, the [`super::Coupled`] struct can call this method when propagating messages.
     #[inline]
     pub(crate) unsafe fn borrow(&self) -> &Vec<T> {
-        unsafe { &*self.0.get() }
+        &*self.0.get()
     }
 
     /// Returns a mutable reference to the vector of messages in the bag.
+    ///
+    /// # Safety:
+    ///
+    /// The caller must ensure that it fulfills all the following invariants:
+    /// - The bag corresponds to an [`OutPort`] of an implementer of the [`super::Atomic`] trait.
+    /// - The implementer only calls this function inside the [`super::Atomic::lambda`] method.
+    ///
+    /// Alternatively, the [`super::Coupled`] struct can call this method when propagating messages.
     #[inline]
     #[allow(clippy::mut_from_ref)]
     pub(crate) unsafe fn borrow_mut(&self) -> &mut Vec<T> {
-        unsafe { &mut *self.0.get() }
+        &mut *self.0.get()
     }
 }
 
 #[cfg(feature = "par_any")]
+// Safety: if all the invariants are met, then a bag can be safely shared among threads.
 unsafe impl<T: Send> Send for Bag<T> {}
 
 #[cfg(feature = "par_any")]
+// Safety: if all the invariants are met, then a bag can be safely shared among threads.
 unsafe impl<T: Sync> Sync for Bag<T> {}
 
-/// Input port. It is just a wrapper of a shared [`Bag`].
-/// This structure only allows reading messages from the underlying bag.
-/// Thus, it cannot inject messages to the bag.
+/// Input port. This structure only allows reading messages. Thus, it cannot inject messages.
+///
+/// # Safety
+///
+/// When calling **any** of its method, the caller must ensure that it fulfills all the following invariants:
+/// - The caller implements the [`super::Atomic`] trait.
+/// - The caller created this port via the [`super::Component::add_in_port`] method of its inner [`super::Component`].
+/// - The implementer only calls these methods inside the [`super::Atomic::delta_ext`] method.
 #[derive(Clone, Debug)]
 pub struct InPort<T>(Shared<Bag<T>>);
 
 impl<T> InPort<T> {
-    /// Creates a new input port from a shared [`Bag`].
     pub(crate) fn new(bag: Shared<Bag<T>>) -> Self {
         Self(bag)
     }
 
     /// Returns `true` if the underlying bag is empty. Otherwise, it returns `false`.
+    ///
+    /// # Safety
+    ///
+    /// The caller must fulfill all the invariants of the [`InPort`] struct.
     #[inline]
     pub fn is_empty(&self) -> bool {
-        unsafe { self.0.borrow().is_empty() }
+        // Safety: we are executing a delta_ext function of the corresponding atomic model
+        unsafe { self.0.borrow() }.is_empty()
     }
 
     /// Returns a reference to the slice of messages of the underlying bag.
+    ///
+    /// # Safety
+    ///
+    /// The caller must fulfill all the invariants of the [`InPort`] struct.
     #[inline]
     pub fn get_values(&self) -> &Vec<T> {
+        // Safety: we are executing a delta_ext function of the corresponding atomic model
         unsafe { self.0.borrow() }
     }
 }
 
-/// Output port. It is just a wrapper of a shared [`Bag`].
-/// This structure only injecting messages to the underlying bag.
-/// Thus, it cannot read the messages in the bag.
+/// Output port. This structure only injecting messages. Thus, it cannot read messages.
+///
+/// # Safety
+///
+/// When calling **any** of its method, the caller must ensure that it fulfills all the following invariants:
+/// - The caller implements the [`super::Atomic`] trait.
+/// - The caller created this port via the [`super::Component::add_out_port`] method of its inner [`super::Component`].
+/// - The implementer only calls these methods inside the [`super::Atomic::lambda`] method.
 #[derive(Clone, Debug)]
 pub struct OutPort<T>(Shared<Bag<T>>);
 
 impl<T> OutPort<T> {
-    /// Creates a new input port from a shared [`Bag`].
     pub(crate) fn new(bag: Shared<Bag<T>>) -> Self {
         Self(bag)
     }
 
     /// Adds a new value to the output port.
+    ///
+    /// # Safety
+    ///
+    /// The caller must fulfill all the invariants of the [`OutPort`] struct.
     #[inline]
     pub fn add_value(&self, value: T) {
-        unsafe { self.0.borrow_mut().push(value) };
+        // Safety: we are executing a lambda function of the corresponding atomic model
+        unsafe { self.0.borrow_mut() }.push(value);
     }
 }
 
 impl<T: Clone> OutPort<T> {
     /// Adds new values from a slice to the output port.
+    ///
+    /// # Safety
+    ///
+    /// The caller must fulfill all the invariants of the [`OutPort`] struct.
     #[inline]
     pub fn add_values(&self, values: &[T]) {
-        unsafe { self.0.borrow_mut().extend_from_slice(values) };
+        // Safety: we are executing a lambda function of the corresponding atomic model
+        unsafe { self.0.borrow_mut() }.extend_from_slice(values);
     }
 }
 
@@ -132,7 +178,7 @@ impl<T: DynRef + Clone> Port for Bag<T> {
     }
 
     #[inline]
-    fn propagate(&self, port_to: &dyn Port) {
+    unsafe fn propagate(&self, port_to: &dyn Port) {
         let port_to = port_to.as_any().downcast_ref::<Bag<T>>().unwrap();
         unsafe { port_to.borrow_mut().extend_from_slice(self.borrow()) };
     }

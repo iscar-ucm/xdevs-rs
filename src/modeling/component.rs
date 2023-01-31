@@ -2,7 +2,7 @@ use super::port::{Bag, InPort, OutPort, Port};
 use crate::{DynRef, Shared};
 use std::collections::HashMap;
 
-/// DEVS component. Models must comprise a ['Component'] to fulfill the [`crate::simulation::Simulator`] trait.
+/// DEVS component. Models must comprise a component to fulfill the [`crate::simulation::Simulator`] trait.
 pub struct Component {
     /// name of the DEVS component.
     name: String,
@@ -10,13 +10,13 @@ pub struct Component {
     t_last: f64,
     /// Time for the next component state transition.
     t_next: f64,
-    /// Keys are port IDs, and values are indices of input ports in [Component::input_ports].
+    /// Input ports map. Keys are the port IDs.
     in_map: HashMap<String, usize>,
-    /// Keys are port IDs, and values are indices of output ports in [Component::output_ports].
+    /// Output ports map. Keys are the port IDs.
     out_map: HashMap<String, usize>,
-    /// Input port set of the DEVS component.
+    /// Input port set of the DEVS component (serialized for better performance).
     in_ports: Vec<Shared<dyn Port>>,
-    /// Output port set of the DEVS component.
+    /// Output port set of the DEVS component (serialized for better performance).
     out_ports: Vec<Shared<dyn Port>>,
 }
 
@@ -59,7 +59,7 @@ impl Component {
         self.t_next = t_next;
     }
 
-    /// Adds a new input port of type [`Port<Input, T>`] and returns a reference to it.
+    /// Adds a new input port of type `T` and returns a reference to it.
     /// It panics if there is already an input port with the same name.
     pub fn add_in_port<T: DynRef + Clone>(&mut self, name: &str) -> InPort<T> {
         if self.in_map.contains_key(name) {
@@ -71,7 +71,7 @@ impl Component {
         InPort::new(bag)
     }
 
-    /// Adds a new output port of type [`Port<Output, T>`] and returns a reference to it.
+    /// Adds a new output port of type `T` and returns a reference to it.
     /// It panics if there is already an output port with the same name.
     pub fn add_out_port<T: DynRef + Clone>(&mut self, name: &str) -> OutPort<T> {
         if self.out_map.contains_key(name) {
@@ -83,13 +83,13 @@ impl Component {
         OutPort::new(bag)
     }
 
-    /// Returns true if all the input ports of the model are empty.
+    /// Returns `true` if all the input ports of the model are empty.
     #[inline]
     pub fn is_input_empty(&self) -> bool {
         self.in_ports.iter().all(|p| p.is_empty())
     }
 
-    /// Returns true if all the output ports of the model are empty.
+    /// Returns `true` if all the output ports of the model are empty.
     #[inline]
     pub fn is_output_empty(&self) -> bool {
         self.out_ports.iter().all(|p| p.is_empty())

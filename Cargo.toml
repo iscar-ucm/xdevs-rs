@@ -24,8 +24,10 @@ par_xic = ["par_any"]
 par_transition = ["par_any"]
 par_stop = ["par_any"]
 par_xxc = ["par_eoc", "par_xic"]
-par_sim = ["par_collection", "par_xxc", "par_transition"]
-par_all = ["par_start", "par_sim", "par_stop"]
+par_sim_no_xxc = ["par_collection", "par_transition"]
+par_sim = ["par_sim_no_xxc", "par_xxc"]
+par_all_no_xxc = ["par_start", "par_sim_no_xxc", "par_stop"]
+par_all = ["par_all_no_xxc", "par_xxc"]
 
 [profile.release]
 lto = true

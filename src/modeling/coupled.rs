@@ -17,30 +17,32 @@ type EOCLocation = usize;
 pub struct Coupled {
     /// Component wrapped by the coupled model.
     pub(crate) component: Component,
-    /// Keys are IDs of subcomponents, and values are indices of [`Coupled::comps_vec`].
+    /// Components map. Keys are components' IDs.
     comps_map: HashMap<String, usize>,
-    /// External input couplings.
+    /// External input couplings map.
     eic_map: HashMap<String, HashMap<String, XICLocation>>,
-    /// Internal couplings.
+    /// Internal couplings map.
     ic_map: HashMap<String, HashMap<String, XICLocation>>,
-    /// External output couplings.
+    /// External output couplings map.
     eoc_map: HashMap<String, HashMap<String, EOCLocation>>,
     /// Components of the DEVS coupled model (serialized for better performance).
     pub(crate) components: Vec<Box<dyn Simulator>>,
-    /// External input and internal couplings (serialized for better performance).
     #[cfg(feature = "par_xic")]
+    /// External input and internal couplings (serialized for better performance).
     pub(crate) xics: Vec<(Shared<dyn Port>, Vec<Shared<dyn Port>>)>,
     #[cfg(not(feature = "par_xic"))]
+    /// External input and internal couplings (serialized for better performance).
     pub(crate) xics: Vec<(Shared<dyn Port>, Shared<dyn Port>)>,
-    /// External output couplings (serialized for better performance).
     #[cfg(feature = "par_eoc")]
+    /// External output couplings (serialized for better performance).
     pub(crate) eocs: Vec<(Shared<dyn Port>, Vec<Shared<dyn Port>>)>,
     #[cfg(not(feature = "par_eoc"))]
+    /// External output couplings (serialized for better performance).
     pub(crate) eocs: Vec<(Shared<dyn Port>, Shared<dyn Port>)>,
 }
 
 impl Coupled {
-    /// Creates a new coupled DEVS model.
+    /// Creates a new coupled DEVS model with the provided name.
     pub fn new(name: &str) -> Self {
         Self {
             component: Component::new(name),
@@ -74,14 +76,14 @@ impl Coupled {
         self.eocs.len()
     }
 
-    /// Adds a new input port of type [`Port<Input, T>`] and returns a reference to it.
+    /// Adds a new input port of type `T` and returns a reference to it.
     /// It panics if there is already an input port with the same name.
     #[inline]
     pub fn add_in_port<T: DynRef + Clone>(&mut self, name: &str) -> InPort<T> {
         self.component.add_in_port::<T>(name)
     }
 
-    /// Adds a new output port of type [`Port<Output, T>`] and returns a reference to it.
+    /// Adds a new output port of type `T` and returns a reference to it.
     /// It panics if there is already an output port with the same name.
     #[inline]
     pub fn add_out_port<T: DynRef + Clone>(&mut self, name: &str) -> OutPort<T> {
@@ -101,7 +103,7 @@ impl Coupled {
     }
 
     /// Returns a reference to a component with the provided name.
-    /// If the coupled model does not contain any model with that name, it return [`None`].
+    /// If the coupled model does not contain any model with that name, it returns [`None`].
     fn get_component(&self, name: &str) -> Option<&Component> {
         let index = *self.comps_map.get(name)?;
         Some(self.components.get(index)?.get_component())
