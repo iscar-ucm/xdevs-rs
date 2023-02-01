@@ -73,7 +73,7 @@ impl Coupled {
 
     /// Returns the number of external output couplings in the coupled model.
     pub fn n_eocs(&self) -> usize {
-        self.eocs.len()
+        self.eoc_map.values().map(|eocs| eocs.len()).sum()
     }
 
     /// Adds a new input port of type `T` and returns a reference to it.

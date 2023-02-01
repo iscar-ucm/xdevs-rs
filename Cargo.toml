@@ -14,8 +14,10 @@ categories = ["simulation"]
 
 [dependencies]
 rayon = { version = "1.6", optional = true }
+cpu-time = { version = "1.0", optional = true }
 
 [features]
+devstone = ["cpu-time"]
 par_any = ["rayon"]
 par_start = ["par_any"]
 par_collection = ["par_any"]
@@ -28,6 +30,13 @@ par_sim_no_xxc = ["par_collection", "par_transition"]
 par_sim = ["par_sim_no_xxc", "par_xxc"]
 par_all_no_xxc = ["par_start", "par_sim_no_xxc", "par_stop"]
 par_all = ["par_all_no_xxc", "par_xxc"]
+
+[[example]]
+name = "devstone"
+required-features = ["devstone"]
+
+[[example]]
+name = "gpt_efp"
 
 [profile.release]
 lto = true

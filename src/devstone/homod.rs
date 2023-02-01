@@ -1,16 +1,30 @@
-use super::{DEVStoneAtomic, DEVStoneSeeder, TestProbe};
+use super::{DEVStoneAtomic, DEVStoneSeeder};
+#[cfg(test)]
+use super::{SharedProbe, TestProbe};
 use crate::modeling::Coupled;
-use std::sync::{Arc, Mutex};
 
 pub struct HOmod {
     pub coupled: Coupled,
 }
 
 impl HOmod {
-    pub fn create(width: usize, depth: usize) -> Coupled {
+    pub fn create(
+        width: usize,
+        depth: usize,
+        int_delay: u64,
+        ext_delay: u64,
+        #[cfg(test)] probe: SharedProbe,
+    ) -> Coupled {
         let mut coupled = Coupled::new("HOmod");
         let seeder = DEVStoneSeeder::new("seeder");
-        let homod = Self::new(width, depth, None);
+        let homod = Self::new(
+            width,
+            depth,
+            int_delay,
+            ext_delay,
+            #[cfg(test)]
+            probe,
+        );
         let homod_name = homod.coupled.component.get_name().to_string();
         coupled.add_component(Box::new(seeder));
         coupled.add_component(Box::new(homod.coupled));
@@ -19,19 +33,13 @@ impl HOmod {
         coupled
     }
 
-    fn _create_test(width: usize, depth: usize, probe: Arc<Mutex<TestProbe>>) -> Coupled {
-        let mut coupled = Coupled::new("HOmod");
-        let seeder = DEVStoneSeeder::new("seeder");
-        let homod = Self::new(width, depth, Some(probe));
-        let homod_name = homod.coupled.component.get_name().to_string();
-        coupled.add_component(Box::new(seeder));
-        coupled.add_component(Box::new(homod.coupled));
-        coupled.add_ic("seeder", "output", &homod_name, "input_1");
-        coupled.add_ic("seeder", "output", &homod_name, "input_2");
-        coupled
-    }
-
-    fn new(width: usize, depth: usize, probe: Option<Arc<Mutex<TestProbe>>>) -> Self {
+    fn new(
+        width: usize,
+        depth: usize,
+        int_delay: u64,
+        ext_delay: u64,
+        #[cfg(test)] probe: SharedProbe,
+    ) -> Self {
         // First we check the input parameters
         if width < 1 {
             panic!("width must be greater than 1")
@@ -47,13 +55,26 @@ impl HOmod {
         coupled.add_out_port::<usize>("output");
         // If this is the inner coupled model, we just add one atomic.
         if depth == 1 {
-            let atomic = DEVStoneAtomic::new("inner_atomic", probe.clone());
+            let atomic = DEVStoneAtomic::new(
+                "inner_atomic",
+                int_delay,
+                ext_delay,
+                #[cfg(test)]
+                probe.clone(),
+            );
             coupled.add_component(Box::new(atomic));
             coupled.add_eic("input_1", "inner_atomic", "input");
             coupled.add_eoc("inner_atomic", "output", "output");
             // Otherwise, we add a subcoupled and a set of atomics.
         } else {
-            let subcoupled = Self::new(width, depth - 1, probe.clone());
+            let subcoupled = Self::new(
+                width,
+                depth - 1,
+                int_delay,
+                ext_delay,
+                #[cfg(test)]
+                probe.clone(),
+            );
             let subcoupled_name = subcoupled.coupled.component.get_name().to_string();
             coupled.add_component(Box::new(subcoupled.coupled));
             coupled.add_eic("input_1", &subcoupled_name, "input_1");
@@ -64,7 +85,13 @@ impl HOmod {
             for i in 1..width {
                 let atomic_name = format!("atomic(1,{i}");
                 prev_row.push(atomic_name.clone());
-                let atomic = DEVStoneAtomic::new(&atomic_name, probe.clone());
+                let atomic = DEVStoneAtomic::new(
+                    &atomic_name,
+                    int_delay,
+                    ext_delay,
+                    #[cfg(test)]
+                    probe.clone(),
+                );
                 coupled.add_component(Box::new(atomic));
                 coupled.add_eic("input_2", &atomic_name, "input");
                 coupled.add_ic(&atomic_name, "output", &subcoupled_name, "input_2");
@@ -73,7 +100,13 @@ impl HOmod {
             for i in 1..width {
                 let atomic_name = format!("atomic(2,{i}");
                 current_row.push(atomic_name.clone());
-                let atomic = DEVStoneAtomic::new(&atomic_name, probe.clone());
+                let atomic = DEVStoneAtomic::new(
+                    &atomic_name,
+                    int_delay,
+                    ext_delay,
+                    #[cfg(test)]
+                    probe.clone(),
+                );
                 coupled.add_component(Box::new(atomic));
                 if i == 1 {
                     coupled.add_eic("input_2", &atomic_name, "input");
@@ -89,7 +122,13 @@ impl HOmod {
                 for i in 1..prev_row.len() {
                     let atomic_name = format!("atomic({layer},{i}");
                     current_row.push(atomic_name.clone());
-                    let atomic = DEVStoneAtomic::new(&atomic_name, probe.clone());
+                    let atomic = DEVStoneAtomic::new(
+                        &atomic_name,
+                        int_delay,
+                        ext_delay,
+                        #[cfg(test)]
+                        probe.clone(),
+                    );
                     coupled.add_component(Box::new(atomic));
                     if i == 1 {
                         coupled.add_eic("input_2", &atomic_name, "input");
@@ -99,8 +138,9 @@ impl HOmod {
             }
         }
         // Before exiting, we update the probe if required
-        if let Some(p) = probe {
-            let mut x = p.lock().unwrap();
+        #[cfg(test)]
+        {
+            let mut x = probe.lock().unwrap();
             x.n_eics += coupled.n_eics();
             x.n_ics += coupled.n_ics();
             x.n_eocs += coupled.n_eocs();
@@ -113,6 +153,7 @@ impl HOmod {
 mod tests {
     use super::*;
     use crate::simulation::*;
+    use std::sync::{Arc, Mutex};
 
     fn expected_atomics(width: usize, depth: usize) -> usize {
         (width - 1 + (width - 1) * width / 2) * (depth - 1) + 1
@@ -158,22 +199,18 @@ mod tests {
         for width in (1..10).step_by(1) {
             for depth in (1..10).step_by(1) {
                 let probe = Arc::new(Mutex::new(TestProbe::default()));
-                let coupled = HOmod::_create_test(width, depth, probe.clone());
-                {
-                    let x = probe.lock().unwrap();
-                    assert_eq!(expected_atomics(width, depth), x.n_atomics);
-                    assert_eq!(expected_eics(width, depth), x.n_eics);
-                    assert_eq!(expected_ics(width, depth), x.n_ics);
-                    assert_eq!(expected_eocs(width, depth), x.n_eocs);
-                }
+                let coupled = HOmod::create(width, depth, 0, 0, probe.clone());
                 let mut simulator = RootCoordinator::new(coupled);
                 simulator.simulate_time(f64::INFINITY);
-                {
-                    let x = probe.lock().unwrap();
-                    assert_eq!(expected_internals(width, depth), x.n_internals);
-                    assert_eq!(expected_internals(width, depth), x.n_externals);
-                    assert_eq!(expected_events(width, depth), x.n_events);
-                }
+
+                let x = probe.lock().unwrap();
+                assert_eq!(expected_atomics(width, depth), x.n_atomics);
+                assert_eq!(expected_eics(width, depth), x.n_eics);
+                assert_eq!(expected_ics(width, depth), x.n_ics);
+                assert_eq!(expected_eocs(width, depth), x.n_eocs);
+                assert_eq!(expected_internals(width, depth), x.n_internals);
+                assert_eq!(expected_internals(width, depth), x.n_externals);
+                assert_eq!(expected_events(width, depth), x.n_events);
             }
         }
     }

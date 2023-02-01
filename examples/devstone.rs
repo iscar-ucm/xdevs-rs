@@ -3,7 +3,6 @@ use std::time::Instant;
 use xdevs::devstone::*;
 use xdevs::simulation::*;
 
-/// The binary crate of xDEVS just runs the DEVStone model selected by the user.
 /// USAGE:
 /// `cargo run <MODEL_TYPE> <WIDTH> <DEPTH>`
 /// - `<MODEL_TYPE>` must be `LI`, `HI`, `HO`, or `HOmod`.
@@ -27,12 +26,15 @@ fn main() {
         .parse()
         .expect("depth could not be parsed");
 
+    let int_delay = 0;
+    let ext_delay = 0;
+
     let start = Instant::now();
     let coupled = match model_type.as_str() {
-        "li" => LI::create(width, depth),
-        "hi" => HI::create(width, depth),
-        "ho" => HO::create(width, depth),
-        "homod" => HOmod::create(width, depth),
+        "li" => LI::create(width, depth, int_delay, ext_delay),
+        "hi" => HI::create(width, depth, int_delay, ext_delay),
+        "ho" => HO::create(width, depth, int_delay, ext_delay),
+        "homod" => HOmod::create(width, depth, int_delay, ext_delay),
         _ => panic!("unknown DEVStone model type"),
     };
     let duration = start.elapsed();

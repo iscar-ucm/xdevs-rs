@@ -94,7 +94,7 @@ impl<T: Atomic + DynRef> Simulator for T {
             if t == t_next {
                 Atomic::delta_conf(self);
             } else {
-                let e = t - self.get_time();
+                let e = t - self.get_t_last();
                 Atomic::delta_ext(self, e);
             }
         } else if t == t_next {
