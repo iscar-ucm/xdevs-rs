@@ -23,7 +23,9 @@ pub struct Coupled {
     /// External output couplings (serialized for better performance).
     pub(crate) eocs: Vec<(Shared<dyn Port>, Shared<dyn Port>)>,
     #[cfg(feature = "par_xic")]
-    pub(crate) par_xics: Vec<Vec<usize>>,
+    pub(crate) par_eics: Vec<Vec<usize>>,
+    #[cfg(feature = "par_xic")]
+    pub(crate) par_ics: Vec<Vec<usize>>,
     #[cfg(feature = "par_eoc")]
     pub(crate) par_eocs: Vec<Vec<usize>>,
 }
@@ -41,7 +43,9 @@ impl Coupled {
             xics: Vec::new(),
             eocs: Vec::new(),
             #[cfg(feature = "par_xic")]
-            par_xics: Vec::new(),
+            par_eics: Vec::new(),
+            #[cfg(feature = "par_xic")]
+            par_ics: Vec::new(),
             #[cfg(feature = "par_eoc")]
             par_eocs: Vec::new(),
         }
@@ -217,9 +221,8 @@ impl Coupled {
 
     #[cfg(feature = "par_xic")]
     pub(crate) fn build_par_xics(&mut self) {
-        self.par_xics = Self::flatten_map(&self.eic_map);
-        self.par_xics
-            .extend_from_slice(&Self::flatten_map(&self.ic_map));
+        self.par_eics = Self::flatten_map(&self.eic_map);
+        self.par_ics = Self::flatten_map(&self.ic_map);
     }
 
     #[cfg(feature = "par_eoc")]

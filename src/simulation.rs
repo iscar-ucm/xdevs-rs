@@ -192,7 +192,14 @@ impl Simulator for Coupled {
     /// If the feature `par_transition` is activated, the iteration is parallelized.
     fn transition(&mut self, t: f64) {
         #[cfg(feature = "par_xic")]
-        self.par_xics.par_iter().for_each(|coups| {
+        self.par_eics.par_iter().for_each(|coups| {
+            for &i in coups.iter() {
+                let (port_to, port_from) = &self.xics[i];
+                unsafe { port_from.propagate(&**port_to) };
+            }
+        });
+        #[cfg(feature = "par_xic")]
+        self.par_ics.par_iter().for_each(|coups| {
             for &i in coups.iter() {
                 let (port_to, port_from) = &self.xics[i];
                 unsafe { port_from.propagate(&**port_to) };
