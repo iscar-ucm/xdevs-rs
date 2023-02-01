@@ -135,6 +135,11 @@ impl Simulator for Coupled {
             .unwrap_or(f64::INFINITY);
         // and set the inner component's last and next times
         self.set_sim_t(t_start, t_next);
+
+        #[cfg(feature = "par_xic")]
+        self.build_par_xics();
+        #[cfg(feature = "par_eoc")]
+        self.build_par_eocs();
     }
 
     /// Iterates over all the subcomponents to call their [`Simulator::stop`] method and obtain the next simulation time.
@@ -163,16 +168,16 @@ impl Simulator for Coupled {
             iter.for_each(|c| c.collection(t));
 
             #[cfg(feature = "par_eoc")]
-            self.eocs.par_iter().for_each(|(port_to, ports_from)| {
-                ports_from.iter().for_each(|port_from| {
-                    // Safety: coupled model propagating messages
-                    unsafe { port_from.propagate(&**port_to) }
-                })
+            self.par_eocs.par_iter().for_each(|coups| {
+                for &i in coups.iter() {
+                    let (port_to, port_from) = &self.eocs[i];
+                    unsafe { port_from.propagate(&**port_to) };
+                }
             });
             #[cfg(not(feature = "par_eoc"))]
             self.eocs.iter().for_each(|(port_to, port_from)| {
                 // Safety: coupled model propagating messages
-                unsafe { port_from.propagate(&**port_to) }
+                unsafe { port_from.propagate(&**port_to) };
             });
         }
     }
@@ -187,18 +192,17 @@ impl Simulator for Coupled {
     /// If the feature `par_transition` is activated, the iteration is parallelized.
     fn transition(&mut self, t: f64) {
         #[cfg(feature = "par_xic")]
-        self.xics.par_iter().for_each(|(port_to, ports_from)| {
-            ports_from.iter().for_each(|port_from| {
-                // Safety: coupled model propagating messages
-                unsafe { port_from.propagate(&**port_to) }
-            })
+        self.par_xics.par_iter().for_each(|coups| {
+            for &i in coups.iter() {
+                let (port_to, port_from) = &self.xics[i];
+                unsafe { port_from.propagate(&**port_to) };
+            }
         });
         #[cfg(not(feature = "par_xic"))]
         self.xics.iter().for_each(|(port_to, port_from)| {
             // Safety: coupled model propagating messages
-            unsafe { port_from.propagate(&**port_to) }
+            unsafe { port_from.propagate(&**port_to) };
         });
-
         #[cfg(feature = "par_transition")]
         let iterator = self.components.par_iter_mut();
         #[cfg(not(feature = "par_transition"))]
