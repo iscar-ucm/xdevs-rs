@@ -1,6 +1,7 @@
 #[cfg(test)]
 use super::SharedProbe;
 use crate::modeling::*;
+#[cfg(feature = "devstone_busy")]
 use cpu_time::ThreadTime;
 use std::time::Duration;
 
@@ -81,12 +82,17 @@ impl DEVStoneAtomic {
     #[inline]
     fn busy_sleep(duration: &Option<Duration>) {
         if let Some(duration) = duration {
-            let now = ThreadTime::now();
-            let mut x: u32 = 0;
-            while now.elapsed() < *duration {
-                std::hint::black_box(&mut x);
-                x = x.wrapping_add(1);
+            #[cfg(feature = "devstone_busy")]
+            {
+                let now = ThreadTime::now();
+                let mut x: u32 = 0;
+                while now.elapsed() < *duration {
+                    std::hint::black_box(&mut x);
+                    x = x.wrapping_add(1);
+                }
             }
+            #[cfg(not(feature = "devstone_busy"))]
+            std::thread::sleep(*duration);
         }
     }
 }

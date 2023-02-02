@@ -23,9 +23,9 @@ pub struct Coupled {
     /// External output couplings (serialized for better performance).
     pub(crate) eocs: Vec<(Shared<dyn Port>, Shared<dyn Port>)>,
     #[cfg(feature = "par_xic")]
-    pub(crate) par_eics: Vec<Vec<usize>>,
+    xic_map: HashMap<String, Vec<usize>>,
     #[cfg(feature = "par_xic")]
-    pub(crate) par_ics: Vec<Vec<usize>>,
+    pub(crate) par_xics: Vec<Vec<usize>>,
     #[cfg(feature = "par_eoc")]
     pub(crate) par_eocs: Vec<Vec<usize>>,
 }
@@ -43,9 +43,9 @@ impl Coupled {
             xics: Vec::new(),
             eocs: Vec::new(),
             #[cfg(feature = "par_xic")]
-            par_eics: Vec::new(),
+            xic_map: HashMap::new(),
             #[cfg(feature = "par_xic")]
-            par_ics: Vec::new(),
+            par_xics: Vec::new(),
             #[cfg(feature = "par_eoc")]
             par_eocs: Vec::new(),
         }
@@ -134,6 +134,14 @@ impl Coupled {
             panic!("coupling already exists");
         }
         coups.insert(source_key, self.xics.len());
+        #[cfg(feature = "par_xic")]
+        {
+            let destination_key = component_to.to_string() + "-" + port_to;
+            self.xic_map
+                .entry(destination_key)
+                .or_default()
+                .push(self.xics.len());
+        }
         self.xics.push((p_to, p_from));
     }
 
@@ -176,6 +184,14 @@ impl Coupled {
             panic!("coupling already exists");
         }
         coups.insert(source_key, self.xics.len());
+        #[cfg(feature = "par_xic")]
+        {
+            let destination_key = component_to.to_string() + "-" + port_to;
+            self.xic_map
+                .entry(destination_key)
+                .or_default()
+                .push(self.xics.len());
+        }
         self.xics.push((p_to, p_from));
     }
 
@@ -212,7 +228,7 @@ impl Coupled {
         self.eocs.push((p_to, p_from));
     }
 
-    #[cfg(any(feature = "par_xic", feature = "par_eoc"))]
+    #[cfg(any(ffeature = "par_eoc"))]
     fn flatten_map(map: &HashMap<String, HashMap<String, usize>>) -> Vec<Vec<usize>> {
         map.values()
             .map(|m| m.values().copied().collect())
@@ -221,12 +237,15 @@ impl Coupled {
 
     #[cfg(feature = "par_xic")]
     pub(crate) fn build_par_xics(&mut self) {
-        self.par_eics = Self::flatten_map(&self.eic_map);
-        self.par_ics = Self::flatten_map(&self.ic_map);
+        self.par_xics = self.xic_map.values().cloned().collect();
     }
 
     #[cfg(feature = "par_eoc")]
     pub(crate) fn build_par_eocs(&mut self) {
-        self.par_eocs = Self::flatten_map(&self.eoc_map);
+        self.par_eocs = self
+            .eoc_map
+            .values()
+            .map(|m| m.values().copied().collect())
+            .collect();
     }
 }
