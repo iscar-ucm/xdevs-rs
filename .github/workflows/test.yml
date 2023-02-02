@@ -29,9 +29,7 @@ jobs:
       - name: Install Rust toolchain
         uses: dtolnay/rust-toolchain@stable
         with:
-          profile: minimal
           toolchain: ${{ matrix.toolchain }}
-          override: true
       
       - name: Build
         run: cargo build --all ${{ matrix.cargo_flags }}
