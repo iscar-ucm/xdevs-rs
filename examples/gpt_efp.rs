@@ -156,9 +156,7 @@ impl Atomic for Transducer {
             println!("generator sent job {job} at time {t}");
         }
         for (job, time) in self.input_p.get_values().iter() {
-            println!(
-                "processor processed job {job} after {time} seconds at time {t}"
-            );
+            println!("processor processed job {job} after {time} seconds at time {t}");
         }
     }
 
