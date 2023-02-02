@@ -98,7 +98,7 @@ impl Atomic for Processor {
     fn delta_ext(&mut self, e: f64) {
         self.sigma -= e;
         if self.job.is_none() {
-            self.job = Some(*self.input.get_values().get(0).unwrap());
+            self.job = Some(*self.input.get_values().first().unwrap());
             self.sigma = self.time;
         }
     }
@@ -153,12 +153,11 @@ impl Atomic for Transducer {
         self.sigma -= e;
         let t = self.component.get_t_last() + e;
         for job in self.input_g.get_values().iter() {
-            println!("generator sent job {} at time {}", job, t);
+            println!("generator sent job {job} at time {t}");
         }
         for (job, time) in self.input_p.get_values().iter() {
             println!(
-                "processor processed job {} after {} seconds at time {}",
-                job, time, t
+                "processor processed job {job} after {time} seconds at time {t}"
             );
         }
     }

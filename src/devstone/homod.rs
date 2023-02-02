@@ -48,7 +48,7 @@ impl HOmod {
             panic!("depth must be greater than 1")
         }
         // Next we create the model structure
-        let name = format!("coupled_{}", depth);
+        let name = format!("coupled_{depth}");
         let mut coupled = Coupled::new(&name);
         coupled.add_in_port::<usize>("input_1");
         coupled.add_in_port::<usize>("input_2");

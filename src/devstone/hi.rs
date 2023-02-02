@@ -47,7 +47,7 @@ impl HI {
             panic!("depth must be greater than 1")
         }
         // Next we create the model structure
-        let name = format!("coupled_{}", depth);
+        let name = format!("coupled_{depth}");
         let mut coupled = Coupled::new(&name);
         coupled.add_in_port::<usize>("input");
         coupled.add_out_port::<usize>("output");
@@ -78,7 +78,7 @@ impl HI {
             coupled.add_eic("input", &subcoupled_name, "input");
             coupled.add_eoc(&subcoupled_name, "output", "output");
             for i in 1..width {
-                let atomic_name = format!("atomic_{}", i);
+                let atomic_name = format!("atomic_{i}");
                 let atomic = DEVStoneAtomic::new(
                     &atomic_name,
                     int_delay,

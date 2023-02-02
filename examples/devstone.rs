@@ -38,13 +38,13 @@ fn main() {
         _ => panic!("unknown DEVStone model type"),
     };
     let duration = start.elapsed();
-    println!("Model creation time: {:?}", duration);
+    println!("Model creation time: {duration:?}");
     let start = Instant::now();
     let mut simulator = RootCoordinator::new(coupled);
     let duration = start.elapsed();
-    println!("Simulator creation time: {:?}", duration);
+    println!("Simulator creation time: {duration:?}");
     let start = Instant::now();
     simulator.simulate_time(f64::INFINITY);
     let duration = start.elapsed();
-    println!("Simulation time: {:?}", duration);
+    println!("Simulation time: {duration:?}");
 }
