@@ -1,0 +1,38 @@
+name: Test
+
+on:
+  push:
+    branches: [ "main", "dev" ]
+  pull_request:
+    branches: [ "main" ]
+
+jobs:
+  test:
+    name: Test
+    runs-on: ${{ matrix.os }}
+    strategy:
+      matrix:
+        os:
+          - ubuntu-latest
+          - windows-latest
+          - macOS-latest
+        toolchain:
+          - stable
+          - nightly
+        cargo_flags:
+          - "--no-default-features"
+          - "--all-features"
+    steps:
+      - name: Checkout source code
+        uses: actions/checkout@v3
+      
+      - name: Install Rust toolchain
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          toolchain: ${{ matrix.toolchain }}
+      
+      - name: Build
+        run: cargo build --all ${{ matrix.cargo_flags }}
+
+      - name: Test
+        run: cargo test --all ${{ matrix.cargo_flags }}

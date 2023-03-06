@@ -14,17 +14,6 @@ pub trait Atomic {
     /// Method for performing any operation after simulating. By default, it does nothing.
     fn stop(&mut self) {}
 
-    /// Returns current simulation time.
-    ///
-    /// # Note
-    ///
-    /// If you want to use this method when implementing the [`lambda`] method,
-    /// you may want consider the `ta`. Lambdas are executed **before** deltas,
-    /// and therefore the last simulation time is not updated yet.
-    fn get_time(&self) -> f64 {
-        self.get_component().get_t_last()
-    }
-
     /// Output function of the atomic DEVS model.
     ///
     /// # Safety
