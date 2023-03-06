@@ -1,6 +1,7 @@
-use crate::{DynRef, Shared};
+use crate::DynRef;
 use std::any::Any;
 use std::cell::UnsafeCell;
+use std::{ops::Deref, rc::Rc};
 
 /// Trait implemented by DEVS ports. It does not consider message types nor port directions.
 pub(crate) trait Port: DynRef {
@@ -26,9 +27,43 @@ pub(crate) trait Port: DynRef {
     unsafe fn propagate(&self, port_to: &dyn Port);
 }
 
+/// Reference to a DEVS port.
+/// Ports are wrapped with [`Rc`] smart pointers.
+#[derive(Debug)]
+#[repr(transparent)]
+pub(crate) struct Shared<T: ?Sized>(pub(crate) Rc<T>);
+
+impl<T> Shared<T> {
+    pub(crate) fn new(value: T) -> Self {
+        Self(Rc::new(value))
+    }
+}
+
+impl<T: ?Sized> Clone for Shared<T> {
+    fn clone(&self) -> Self {
+        Self(self.0.clone())
+    }
+}
+
+impl<T: ?Sized> Deref for Shared<T> {
+    type Target = T;
+    fn deref(&self) -> &Self::Target {
+        &self.0
+    }
+}
+
+#[cfg(feature = "par_any")]
+// Safety: if all the invariants are met, then a port can be safely shared among threads.
+unsafe impl<T: Port + ?Sized> Send for Shared<T> {}
+
+#[cfg(feature = "par_any")]
+// Safety: if all the invariants are met, then a port can be safely shared among threads.
+unsafe impl<T: Port + ?Sized> Sync for Shared<T> {}
+
 /// Bag of DEVS messages.
 /// It is just a wrapper of an [`UnsafeCell`] containing a vector of messages.
 #[derive(Debug)]
+#[repr(transparent)]
 pub(crate) struct Bag<T>(UnsafeCell<Vec<T>>);
 
 impl<T> Bag<T> {
@@ -49,7 +84,7 @@ impl<T> Bag<T> {
     /// Alternatively, the [`super::Coupled`] struct can call this method when propagating messages.
     #[inline]
     pub(crate) unsafe fn borrow(&self) -> &Vec<T> {
-        &*self.0.get()
+        &*self.get()
     }
 
     /// Returns a mutable reference to the vector of messages in the bag.
@@ -64,7 +99,14 @@ impl<T> Bag<T> {
     #[inline]
     #[allow(clippy::mut_from_ref)]
     pub(crate) unsafe fn borrow_mut(&self) -> &mut Vec<T> {
-        &mut *self.0.get()
+        &mut *self.get()
+    }
+}
+
+impl<T> Deref for Bag<T> {
+    type Target = UnsafeCell<Vec<T>>;
+    fn deref(&self) -> &Self::Target {
+        &self.0
     }
 }
 
@@ -76,6 +118,34 @@ unsafe impl<T: Send> Send for Bag<T> {}
 // Safety: if all the invariants are met, then a bag can be safely shared among threads.
 unsafe impl<T: Sync> Sync for Bag<T> {}
 
+impl<T: DynRef + Clone> Port for Bag<T> {
+    #[inline]
+    fn as_any(&self) -> &dyn Any {
+        self
+    }
+
+    #[inline]
+    fn is_empty(&self) -> bool {
+        unsafe { self.borrow().is_empty() }
+    }
+
+    #[inline]
+    fn clear(&self) {
+        unsafe { self.borrow_mut().clear() };
+    }
+
+    #[inline]
+    fn is_compatible(&self, other: &dyn Port) -> bool {
+        other.as_any().downcast_ref::<Bag<T>>().is_some()
+    }
+
+    #[inline]
+    unsafe fn propagate(&self, port_to: &dyn Port) {
+        let port_to = port_to.as_any().downcast_ref::<Bag<T>>().unwrap();
+        unsafe { port_to.borrow_mut().extend_from_slice(self.borrow()) };
+    }
+}
+
 /// Input port. This structure only allows reading messages. Thus, it cannot inject messages.
 ///
 /// # Safety
@@ -84,10 +154,10 @@ unsafe impl<T: Sync> Sync for Bag<T> {}
 /// - The caller implements the [`super::Atomic`] trait.
 /// - The caller created this port via the [`super::Component::add_in_port`] method of its inner [`super::Component`].
 /// - The implementer only calls these methods inside the [`super::Atomic::delta_ext`] method.
-#[derive(Clone, Debug)]
+#[derive(Debug)]
 pub struct InPort<T>(Shared<Bag<T>>);
 
-impl<T> InPort<T> {
+impl<T: Clone> InPort<T> {
     pub(crate) fn new(bag: Shared<Bag<T>>) -> Self {
         Self(bag)
     }
@@ -123,10 +193,10 @@ impl<T> InPort<T> {
 /// - The caller implements the [`super::Atomic`] trait.
 /// - The caller created this port via the [`super::Component::add_out_port`] method of its inner [`super::Component`].
 /// - The implementer only calls these methods inside the [`super::Atomic::lambda`] method.
-#[derive(Clone, Debug)]
-pub struct OutPort<T>(Shared<Bag<T>>);
+#[derive(Debug)]
+pub struct OutPort<T: Clone>(Shared<Bag<T>>);
 
-impl<T> OutPort<T> {
+impl<T: Clone> OutPort<T> {
     pub(crate) fn new(bag: Shared<Bag<T>>) -> Self {
         Self(bag)
     }
@@ -153,33 +223,5 @@ impl<T: Clone> OutPort<T> {
     pub fn add_values(&self, values: &[T]) {
         // Safety: we are executing a lambda function of the corresponding atomic model
         unsafe { self.0.borrow_mut() }.extend_from_slice(values);
-    }
-}
-
-impl<T: DynRef + Clone> Port for Bag<T> {
-    #[inline]
-    fn as_any(&self) -> &dyn Any {
-        self
-    }
-
-    #[inline]
-    fn is_empty(&self) -> bool {
-        unsafe { self.borrow().is_empty() }
-    }
-
-    #[inline]
-    fn clear(&self) {
-        unsafe { self.borrow_mut().clear() };
-    }
-
-    #[inline]
-    fn is_compatible(&self, other: &dyn Port) -> bool {
-        other.as_any().downcast_ref::<Bag<T>>().is_some()
-    }
-
-    #[inline]
-    unsafe fn propagate(&self, port_to: &dyn Port) {
-        let port_to = port_to.as_any().downcast_ref::<Bag<T>>().unwrap();
-        unsafe { port_to.borrow_mut().extend_from_slice(self.borrow()) };
     }
 }

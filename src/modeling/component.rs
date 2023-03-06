@@ -1,5 +1,5 @@
-use super::port::{Bag, InPort, OutPort, Port};
-use crate::{DynRef, Shared};
+use super::port::{Bag, InPort, OutPort, Port, Shared};
+use crate::DynRef;
 use std::collections::HashMap;
 
 /// DEVS component. Models must comprise a component to fulfill the [`crate::simulation::Simulator`] trait.
@@ -67,7 +67,7 @@ impl Component {
         }
         self.in_map.insert(name.to_string(), self.in_ports.len());
         let bag = Shared::new(Bag::new());
-        self.in_ports.push(bag.clone());
+        self.in_ports.push(Shared(bag.0.clone()));
         InPort::new(bag)
     }
 
@@ -79,7 +79,7 @@ impl Component {
         }
         self.out_map.insert(name.to_string(), self.out_ports.len());
         let bag = Shared::new(Bag::new());
-        self.out_ports.push(bag.clone());
+        self.out_ports.push(Shared(bag.0.clone()));
         OutPort::new(bag)
     }
 

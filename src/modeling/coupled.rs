@@ -1,7 +1,7 @@
-use super::port::Port;
+use super::port::{Port, Shared};
 use super::{Component, InPort, OutPort};
 use crate::simulation::Simulator;
-use crate::{DynRef, Shared};
+use crate::DynRef;
 use std::collections::HashMap;
 
 /// Coupled DEVS model.

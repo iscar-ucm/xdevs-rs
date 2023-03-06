@@ -40,3 +40,6 @@ name = "gpt_efp"
 [profile.release]
 lto = true
 panic = "unwind"
+
+[package.metadata.docs.rs]
+features = ["par_all"]
