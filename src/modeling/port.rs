@@ -3,14 +3,16 @@ use std::any::Any;
 use std::cell::UnsafeCell;
 use std::ops::Deref;
 
-#[cfg(not(feature = "par_any"))]
-use std::rc::Rc;
-#[cfg(feature = "par_any")]
+/// Helper type alias for seamlessly allowing sequential/parallel execution.
+//#[cfg(not(feature = "par_any"))]
+//use std::rc::Rc;
+/// Helper type alias for seamlessly allowing sequential/parallel execution.
+//#[cfg(feature = "par_any")]
 use std::sync::Arc;
 
-#[cfg(not(feature = "par_any"))]
-pub(super) type Shared<T> = Rc<T>;
-#[cfg(feature = "par_any")]
+//#[cfg(not(feature = "par_any"))]
+//pub(super) type Shared<T> = Rc<T>;
+//#[cfg(feature = "par_any")]
 pub(super) type Shared<T> = Arc<T>;
 
 /// Trait implemented by DEVS ports. It does not consider message types nor port directions.
