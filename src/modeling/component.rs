@@ -67,7 +67,7 @@ impl Component {
         }
         self.in_map.insert(name.to_string(), self.in_ports.len());
         let bag = Shared::new(Bag::new());
-        self.in_ports.push(Shared(bag.0.clone()));
+        self.in_ports.push(bag.clone());
         InPort::new(bag)
     }
 
@@ -79,20 +79,20 @@ impl Component {
         }
         self.out_map.insert(name.to_string(), self.out_ports.len());
         let bag = Shared::new(Bag::new());
-        self.out_ports.push(Shared(bag.0.clone()));
+        self.out_ports.push(bag.clone());
         OutPort::new(bag)
     }
 
     /// Returns `true` if all the input ports of the model are empty.
+    ///
+    /// # Safety
+    ///
+    /// This method can only be executed if **any** of these conditions are met:
+    /// - Inside the [`crate::simulation::Simulator::transition`] method.
+    /// - Inside the [`crate::modeling::Atomic::delta_ext`] method.
     #[inline]
-    pub fn is_input_empty(&self) -> bool {
+    pub unsafe fn is_input_empty(&self) -> bool {
         self.in_ports.iter().all(|p| p.is_empty())
-    }
-
-    /// Returns `true` if all the output ports of the model are empty.
-    #[inline]
-    pub fn is_output_empty(&self) -> bool {
-        self.out_ports.iter().all(|p| p.is_empty())
     }
 
     /// Returns a reference to an input port with the given name.
@@ -110,14 +110,22 @@ impl Component {
     }
 
     /// Clears all the input ports of the model.
+    ///
+    /// # Safety
+    ///
+    /// This method can only be executed in the [`crate::simulation::Simulator::clear_ports`] method.
     #[inline]
-    pub(crate) fn clear_input(&mut self) {
+    pub(crate) unsafe fn clear_input(&mut self) {
         self.in_ports.iter_mut().for_each(|p| p.clear());
     }
 
     /// Clears all the output ports of the model.
+    ///
+    /// # Safety
+    ///
+    /// This method can only be executed in the [`crate::simulation::Simulator::clear_ports`] method.
     #[inline]
-    pub(crate) fn clear_output(&mut self) {
+    pub(crate) unsafe fn clear_output(&mut self) {
         self.out_ports.iter_mut().for_each(|p| p.clear());
     }
 }

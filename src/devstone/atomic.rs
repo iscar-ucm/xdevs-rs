@@ -116,7 +116,8 @@ impl Atomic for DEVStoneAtomic {
 
     #[inline]
     fn lambda(&self) {
-        self.output.add_value(self.state.n_events);
+        // Safety: adding message on atomic model's output port at lambda
+        unsafe { self.output.add_value(self.state.n_events) };
     }
 
     #[inline]
@@ -128,7 +129,8 @@ impl Atomic for DEVStoneAtomic {
 
     fn delta_ext(&mut self, _e: f64) {
         self.state.n_externals += 1;
-        self.state.n_events += self.input.get_values().len();
+        // Safety: reading messages on atomic model's input port at delta_ext
+        self.state.n_events += unsafe { self.input.get_values() }.len();
         self.sigma = 0.;
         Self::busy_sleep(&self.ext_delay);
     }

@@ -40,8 +40,11 @@ pub trait Simulator: DynRef {
     #[inline]
     fn clear_ports(&mut self) {
         let component = self.get_component_mut();
-        component.clear_input();
-        component.clear_output()
+        // Safety: simulator clearing its ports
+        unsafe {
+            component.clear_input();
+            component.clear_output();
+        }
     }
 
     /// It starts the simulation, setting the initial time to t_start.
@@ -90,7 +93,8 @@ impl<T: Atomic + DynRef> Simulator for T {
 
     fn transition(&mut self, t: f64) -> f64 {
         let t_next = self.get_t_next();
-        if !self.get_component().is_input_empty() {
+        // Safety: simulator executing its transition function
+        if !unsafe { self.get_component().is_input_empty() } {
             if t == t_next {
                 Atomic::delta_conf(self);
             } else {

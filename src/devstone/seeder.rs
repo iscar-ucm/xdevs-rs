@@ -31,7 +31,8 @@ impl Atomic for DEVStoneSeeder {
 
     #[inline]
     fn lambda(&self) {
-        self.output.add_value(0);
+        // Safety: adding message on atomic model's output port at lambda
+        unsafe { self.output.add_value(0) };
     }
 
     #[inline]
