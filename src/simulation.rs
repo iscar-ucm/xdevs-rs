@@ -40,8 +40,11 @@ pub trait Simulator: DynRef {
     #[inline]
     fn clear_ports(&mut self) {
         let component = self.get_component_mut();
-        component.clear_input();
-        component.clear_output()
+        // Safety: simulator clearing its ports
+        unsafe {
+            component.clear_input();
+            component.clear_output();
+        }
     }
 
     /// It starts the simulation, setting the initial time to t_start.
@@ -68,20 +71,17 @@ impl<T: Atomic + DynRef> Simulator for T {
         Atomic::get_component_mut(self)
     }
 
-    #[inline]
     fn start(&mut self, t_start: f64) {
         Atomic::start(self);
         let ta = self.ta();
         self.set_sim_t(t_start, t_start + ta);
     }
 
-    #[inline]
     fn stop(&mut self, t_stop: f64) {
         self.set_sim_t(t_stop, f64::INFINITY);
         Atomic::stop(self);
     }
 
-    #[inline]
     fn collection(&mut self, t: f64) {
         if t >= self.get_t_next() {
             Atomic::lambda(self)
@@ -90,7 +90,8 @@ impl<T: Atomic + DynRef> Simulator for T {
 
     fn transition(&mut self, t: f64) -> f64 {
         let t_next = self.get_t_next();
-        if !self.get_component().is_input_empty() {
+        // Safety: simulator executing its transition function
+        if !unsafe { self.get_component().is_input_empty() } {
             if t == t_next {
                 Atomic::delta_conf(self);
             } else {
@@ -120,7 +121,9 @@ impl Simulator for Coupled {
         &mut self.component
     }
 
-    /// Iterates over all the subcomponents to call their [`Simulator::start`] method and obtain the next simulation time.
+    /// Iterates over all the subcomponents to call their [`Simulator::start`]
+    /// method and obtain the next simulation time.
+    ///
     /// If the feature `par_start` is activated, the iteration is parallelized.
     fn start(&mut self, t_start: f64) {
         #[cfg(feature = "par_start")]
@@ -144,9 +147,10 @@ impl Simulator for Coupled {
         self.build_par_eocs();
     }
 
-    /// Iterates over all the subcomponents to call their [`Simulator::stop`] method and obtain the next simulation time.
+    /// Iterates over all the subcomponents to call their [`Simulator::stop`]
+    /// method and obtain the next simulation time.
+    ///
     /// If the feature `par_stop` is activated, the iteration is parallelized.
-    #[inline]
     fn stop(&mut self, t_stop: f64) {
         #[cfg(feature = "par_stop")]
         let iter = self.components.par_iter_mut();
@@ -160,6 +164,7 @@ impl Simulator for Coupled {
     /// Iterates over all the subcomponents to call their [`Simulator::collection`] method.
     /// If the feature `par_collection` is activated, the iteration is parallelized.
     /// Then, it iterates over all the EOCs and propagates messages accordingly.
+    ///
     /// If the feature `par_eoc` is activated, the iteration is parallelized.
     fn collection(&mut self, t: f64) {
         if t >= self.get_t_next() {
@@ -173,6 +178,7 @@ impl Simulator for Coupled {
             self.par_eocs.par_iter().for_each(|coups| {
                 for &i in coups.iter() {
                     let (port_to, port_from) = &self.eocs[i];
+                    // Safety: coupled model propagating messages
                     unsafe { port_from.propagate(&**port_to) };
                 }
             });
@@ -186,7 +192,7 @@ impl Simulator for Coupled {
 
     /// Iterates over all the EICs and ICs and propagates messages accordingly.
     /// If the feature `par_xic` is activated, the iteration is parallelized.
-    /// Then, itterates over all the subcomponents to:
+    /// Then, it iterates over all the subcomponents to:
     /// 1. Call their [`Simulator::transition`] method
     /// 2. Clear their ports
     /// 3. obtain their next simulation time.
@@ -197,6 +203,7 @@ impl Simulator for Coupled {
         self.par_xics.par_iter().for_each(|coups| {
             for &i in coups.iter() {
                 let (port_to, port_from) = &self.xics[i];
+                // Safety: coupled model propagating messages
                 unsafe { port_from.propagate(&**port_to) };
             }
         });
@@ -229,26 +236,13 @@ impl<T: Simulator> RootCoordinator<T> {
     }
 
     /// Runs a simulation for a given period of time.
-    pub fn simulate_time(&mut self, t_end: f64) {
+    pub fn simulate(&mut self, t_end: f64) {
         self.start(0.);
         let mut t_next = self.get_t_next();
         while t_next < t_end {
             self.collection(t_next);
             self.transition(t_next);
             t_next = self.get_t_next();
-        }
-        self.stop(t_next);
-    }
-
-    /// Runs a simulation for a given number of simulation cycles.
-    pub fn simulate_steps(&mut self, mut n_steps: usize) {
-        self.start(0.);
-        let mut t_next = self.get_t_next();
-        while t_next < f64::INFINITY && n_steps > 0 {
-            self.collection(t_next);
-            self.transition(t_next);
-            t_next = self.get_t_next();
-            n_steps -= 1;
         }
         self.stop(t_next);
     }

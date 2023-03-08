@@ -35,7 +35,8 @@ impl Atomic for Generator {
         &mut self.component
     }
     fn lambda(&self) {
-        self.output.add_value(self.count);
+        // Safety: adding message on atomic model's output port at lambda
+        unsafe { self.output.add_value(self.count) };
     }
     fn delta_int(&mut self) {
         self.count += 1;
@@ -43,7 +44,8 @@ impl Atomic for Generator {
     }
     fn delta_ext(&mut self, e: f64) {
         self.sigma -= e;
-        if !self.input.is_empty() {
+        // Safety: reading messages on atomic model's input port at delta_ext
+        if !unsafe { self.input.is_empty() } {
             self.sigma = f64::INFINITY;
         }
     }
@@ -86,7 +88,8 @@ impl Atomic for Processor {
 
     fn lambda(&self) {
         if let Some(job) = self.job {
-            self.output.add_value((job, self.time));
+            // Safety: adding message on atomic model's output port at lambda
+            unsafe { self.output.add_value((job, self.time)) };
         }
     }
 
@@ -98,7 +101,8 @@ impl Atomic for Processor {
     fn delta_ext(&mut self, e: f64) {
         self.sigma -= e;
         if self.job.is_none() {
-            self.job = Some(*self.input.get_values().first().unwrap());
+            // Safety: reading messages on atomic model's input port at delta_ext
+            self.job = Some(*unsafe { self.input.get_values() }.first().unwrap());
             self.sigma = self.time;
         }
     }
@@ -141,7 +145,8 @@ impl Atomic for Transducer {
     }
 
     fn lambda(&self) {
-        self.output.add_value(true);
+        // Safety: adding message on atomic model's output port at lambda
+        unsafe { self.output.add_value(true) };
     }
 
     fn delta_int(&mut self) {
@@ -152,10 +157,12 @@ impl Atomic for Transducer {
     fn delta_ext(&mut self, e: f64) {
         self.sigma -= e;
         let t = self.component.get_t_last() + e;
-        for job in self.input_g.get_values().iter() {
+        // Safety: reading messages on atomic model's input port at delta_ext
+        for job in unsafe { self.input_g.get_values() }.iter() {
             println!("generator sent job {job} at time {t}");
         }
-        for (job, time) in self.input_p.get_values().iter() {
+        // Safety: reading messages on atomic model's input port at delta_ext
+        for (job, time) in unsafe { self.input_p.get_values() }.iter() {
             println!("processor processed job {job} after {time} seconds at time {t}");
         }
     }
@@ -238,5 +245,5 @@ fn main() {
         _ => panic!("unknown model type. It must be either \"gpt\" or \"efp\""),
     };
     let mut simulator = RootCoordinator::new(coupled);
-    simulator.simulate_time(f64::INFINITY)
+    simulator.simulate(f64::INFINITY)
 }

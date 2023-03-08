@@ -9,16 +9,15 @@ pub trait Atomic {
     fn get_component_mut(&mut self) -> &mut Component;
 
     /// Method for performing any operation before simulating. By default, it does nothing.
+    #[inline]
     fn start(&mut self) {}
 
     /// Method for performing any operation after simulating. By default, it does nothing.
+    #[inline]
     fn stop(&mut self) {}
 
-    /// Output function of the atomic DEVS model.
-    ///
-    /// # Safety
-    ///
-    /// This is the only method where implementers can safely manipulate their [`super::OutPort`] structs.
+    /// Output function of the atomic DEVS model. This is the only method where
+    /// implementers can safely manipulate their [`super::OutPort`] structs.
     fn lambda(&self);
 
     /// Internal transition function of the atomic DEVS model.
@@ -26,9 +25,6 @@ pub trait Atomic {
 
     /// External transition function of the atomic DEVS model.
     /// `e` corresponds to the elapsed time since the last state transition of the model.
-    ///
-    /// # Safety
-    ///
     /// This is the only method where implementers can safely manipulate their [`super::InPort`] structs.
     fn delta_ext(&mut self, e: f64);
 
@@ -38,6 +34,7 @@ pub trait Atomic {
     /// Confluent transition function of the atomic DEVS model.
     /// By default, it first triggers [`Atomic::delta_int`].
     /// Then, it triggers [`Atomic::delta_ext`] with the elapsed time set to 0.
+    #[inline]
     fn delta_conf(&mut self) {
         self.delta_int();
         self.delta_ext(0.);

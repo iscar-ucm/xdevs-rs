@@ -44,7 +44,7 @@ fn main() {
     let duration = start.elapsed();
     println!("Simulator creation time: {duration:?}");
     let start = Instant::now();
-    simulator.simulate_time(f64::INFINITY);
+    simulator.simulate(f64::INFINITY);
     let duration = start.elapsed();
     println!("Simulation time: {duration:?}");
 }
