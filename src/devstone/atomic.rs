@@ -80,7 +80,7 @@ impl DEVStoneAtomic {
     }
 
     #[inline]
-    fn busy_sleep(duration: &Option<Duration>) {
+    fn sleep(duration: &Option<Duration>) {
         if let Some(duration) = duration {
             #[cfg(feature = "devstone_busy")]
             {
@@ -124,7 +124,7 @@ impl Atomic for DEVStoneAtomic {
     fn delta_int(&mut self) {
         self.state.n_internals += 1;
         self.sigma = f64::INFINITY;
-        Self::busy_sleep(&self.int_delay);
+        Self::sleep(&self.int_delay);
     }
 
     fn delta_ext(&mut self, _e: f64) {
@@ -132,7 +132,7 @@ impl Atomic for DEVStoneAtomic {
         // Safety: reading messages on atomic model's input port at delta_ext
         self.state.n_events += unsafe { self.input.get_values() }.len();
         self.sigma = 0.;
-        Self::busy_sleep(&self.ext_delay);
+        Self::sleep(&self.ext_delay);
     }
 
     #[inline]

@@ -2,18 +2,7 @@ use crate::DynRef;
 use std::any::Any;
 use std::cell::UnsafeCell;
 use std::ops::Deref;
-
-/// Helper type alias for seamlessly allowing sequential/parallel execution.
-//#[cfg(not(feature = "par_any"))]
-//use std::rc::Rc;
-/// Helper type alias for seamlessly allowing sequential/parallel execution.
-//#[cfg(feature = "par_any")]
 use std::sync::Arc;
-
-//#[cfg(not(feature = "par_any"))]
-//pub(super) type Shared<T> = Rc<T>;
-//#[cfg(feature = "par_any")]
-pub(super) type Shared<T> = Arc<T>;
 
 /// Trait implemented by DEVS ports. It does not consider message types nor port directions.
 pub(crate) trait Port: DynRef {
@@ -23,15 +12,16 @@ pub(crate) trait Port: DynRef {
     /// Returns `true` if the port does not contain any value.
     ///
     /// # Safety
-    ///
-    /// To do.
+    ///   
+    /// This method must only be executed by an [`InPort`] or
+    /// [`super::Component`] when checking if the port is empty.
     unsafe fn is_empty(&self) -> bool;
 
     /// It clears all the values in the port.
     ///
     /// # Safety
     ///
-    /// To do.
+    /// This method must only be executed by the [`super::Component`] when clearing its ports.
     unsafe fn clear(&self);
 
     /// Returns `true` if other port is compatible.
@@ -41,35 +31,30 @@ pub(crate) trait Port: DynRef {
     ///
     /// # Safety
     ///
-    /// The caller must ensure that it fulfills all the following invariants:
-    /// - The caller is a [`super::Coupled`] model.
-    /// - The caller is propagating messages according to its couplings.
+    /// This method can only be executed by a [`super::Coupled`] model when propagating
+    /// messages in its [`crate::simulation::Simulator`] trait implementation.
     unsafe fn propagate(&self, port_to: &dyn Port);
 }
 
-/// Bag of DEVS messages.
-/// It is just a wrapper of an [`UnsafeCell`] containing a vector of messages.
+/// Bag of DEVS messages. Each port has its own bag.
 #[derive(Debug)]
-#[repr(transparent)]
 pub(super) struct Bag<T>(UnsafeCell<Vec<T>>);
 
 impl<T> Bag<T> {
-    /// Creates a new message bag.
+    /// Creates a new message bag wrapped in an [`Arc`].
     #[inline]
-    pub(super) fn new() -> Self {
-        Self(UnsafeCell::new(Vec::new()))
+    pub(super) fn new() -> Arc<Self> {
+        Arc::new(Self(UnsafeCell::new(Vec::new())))
     }
 
     /// Returns a reference to the vector of messages in the bag.
     ///
     /// # Safety:
     ///
-    /// The caller must ensure that it fulfills all the following invariants:
-    /// - The bag corresponds to an [`InPort`] of an implementer of the [`super::Atomic`] trait.
-    /// - The implementer only calls this function inside the [`super::Atomic::delta_ext`] method.
-    ///
-    /// Alternatively, the [`super::Coupled`] struct can call this method when propagating messages.
-    #[inline(always)]
+    /// The caller must ensure that it fulfills **any** the following invariants:
+    /// - The caller is an [`InPort`] struct and fulfills the aditional invariants.
+    /// - The caller executed the [`Port::propagate`] method and fulfills the additional invariants.
+    #[inline]
     unsafe fn borrow(&self) -> &Vec<T> {
         &*self.get()
     }
@@ -78,13 +63,11 @@ impl<T> Bag<T> {
     ///
     /// # Safety:
     ///
-    /// The caller must ensure that it fulfills all the following invariants:
-    /// - The bag corresponds to an [`OutPort`] of an implementer of the [`super::Atomic`] trait.
-    /// - The implementer only calls this function inside the [`super::Atomic::lambda`] method.
-    ///
-    /// Alternatively, the [`super::Coupled`] struct can call this method when propagating messages.
+    /// The caller must ensure that it fulfills **any** the following invariants:
+    /// - The caller is an [`OutPort`] struct and fulfills the aditional invariants.
+    /// - The caller executed the [`Port::propagate`] method and fulfills the additional invariants.
     #[allow(clippy::mut_from_ref)]
-    #[inline(always)]
+    #[inline]
     unsafe fn borrow_mut(&self) -> &mut Vec<T> {
         &mut *self.get()
     }
@@ -134,23 +117,18 @@ impl<T: DynRef + Clone> Port for Bag<T> {
 }
 
 /// Input port. This structure only allows reading messages. Thus, it cannot inject messages.
+/// Note that we do not implement the [`Clone`] trait in purpose, as we want to avoid their misuse.
 #[derive(Debug)]
-pub struct InPort<T>(Shared<Bag<T>>);
+pub struct InPort<T>(pub(super) Arc<Bag<T>>);
 
 impl<T: Clone> InPort<T> {
-    pub(super) fn new(bag: Shared<Bag<T>>) -> Self {
-        Self(bag)
-    }
-
     /// Returns `true` if the underlying bag is empty. Otherwise, it returns `false`.
     ///
     /// # Safety
     ///
-    /// When calling this method, the caller must ensure that it fulfills all the following invariants:
-    /// - The caller implements the [`super::Atomic`] trait.
-    /// - This port is an input port of the caller.
-    /// - The caller is inside the [`super::Atomic::delta_ext`] method.
-    #[inline(always)]
+    /// This method can only be called when implementing the [`super::Atomic::delta_ext`] method.
+    /// Furthermore, this port must be one of the input ports of the implementer.
+    #[inline]
     pub unsafe fn is_empty(&self) -> bool {
         self.0.borrow().is_empty()
     }
@@ -159,41 +137,27 @@ impl<T: Clone> InPort<T> {
     ///
     /// # Safety
     ///
-    /// When calling this method, the caller must ensure that it fulfills all the following invariants:
-    /// - The caller implements the [`super::Atomic`] trait.
-    /// - This port is an input port of the caller.
-    /// - The caller is inside the [`super::Atomic::delta_ext`] method.
-    #[inline(always)]
-    pub unsafe fn get_values(&self) -> &Vec<T> {
+    /// This method can only be called when implementing the [`super::Atomic::delta_ext`] method.
+    /// Furthermore, this port must be one of the input ports of the implementer.
+    #[inline]
+    pub unsafe fn get_values(&self) -> &[T] {
         self.0.borrow()
     }
 }
 
 /// Output port. This structure only injecting messages. Thus, it cannot read messages.
-///
-/// # Safety
-///
-/// When calling **any** of its method, the caller must ensure that it fulfills all the following invariants:
-/// - The caller implements the [`super::Atomic`] trait.
-/// - The caller created this port via the [`super::Component::add_out_port`] method of its inner [`super::Component`].
-/// - The implementer only calls these methods inside the [`super::Atomic::lambda`] method.
+/// Note that we do not implement the [`Clone`] trait in purpose, as we want to avoid their misuse.
 #[derive(Debug)]
-pub struct OutPort<T: Clone>(Shared<Bag<T>>);
+pub struct OutPort<T: Clone>(pub(super) Arc<Bag<T>>);
 
 impl<T: Clone> OutPort<T> {
-    pub(super) fn new(bag: Shared<Bag<T>>) -> Self {
-        Self(bag)
-    }
-
     /// Adds a new value to the output port.
     ///
     /// # Safety
     ///
-    /// When calling this method, the caller must ensure that it fulfills all the following invariants:
-    /// - The caller implements the [`super::Atomic`] trait.
-    /// - This port is an output port of the caller.
-    /// - The caller is inside the [`super::Atomic::lambda`] method.
-    #[inline(always)]
+    /// This method can only be called when implementing the [`super::Atomic::lambda`] method.
+    /// Furthermore, this port must be one of the output ports of the implementer.
+    #[inline]
     pub unsafe fn add_value(&self, value: T) {
         self.0.borrow_mut().push(value);
     }
@@ -202,11 +166,9 @@ impl<T: Clone> OutPort<T> {
     ///
     /// # Safety
     ///
-    /// When calling this method, the caller must ensure that it fulfills all the following invariants:
-    /// - The caller implements the [`super::Atomic`] trait.
-    /// - This port is an output port of the caller.
-    /// - The caller is inside the [`super::Atomic::lambda`] method.
-    #[inline(always)]
+    /// This method can only be called when implementing the [`super::Atomic::lambda`] method.
+    /// Furthermore, this port must be one of the output ports of the implementer.
+    #[inline]
     pub unsafe fn add_values(&self, values: &[T]) {
         self.0.borrow_mut().extend_from_slice(values);
     }

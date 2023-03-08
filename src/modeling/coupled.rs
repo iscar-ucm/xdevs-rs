@@ -1,8 +1,9 @@
-use super::port::{Port, Shared};
+use super::port::Port;
 use super::{Component, InPort, OutPort};
 use crate::simulation::Simulator;
 use crate::DynRef;
 use std::collections::HashMap;
+use std::sync::Arc;
 
 /// Coupled DEVS model.
 pub struct Coupled {
@@ -19,9 +20,9 @@ pub struct Coupled {
     /// Components of the DEVS coupled model (serialized for better performance).
     pub(crate) components: Vec<Box<dyn Simulator>>,
     /// External input and internal couplings (serialized for better performance).
-    pub(crate) xics: Vec<(Shared<dyn Port>, Shared<dyn Port>)>,
+    pub(crate) xics: Vec<(Arc<dyn Port>, Arc<dyn Port>)>,
     /// External output couplings (serialized for better performance).
-    pub(crate) eocs: Vec<(Shared<dyn Port>, Shared<dyn Port>)>,
+    pub(crate) eocs: Vec<(Arc<dyn Port>, Arc<dyn Port>)>,
     #[cfg(feature = "par_xic")]
     xic_map: HashMap<String, Vec<usize>>,
     #[cfg(feature = "par_xic")]
@@ -52,21 +53,25 @@ impl Coupled {
     }
 
     /// Returns the number of components in the coupled model.
+    #[inline]
     pub fn n_components(&self) -> usize {
         self.components.len()
     }
 
     /// Returns the number of external input couplings in the coupled model.
+    #[inline]
     pub fn n_eics(&self) -> usize {
         self.eic_map.values().map(|eics| eics.len()).sum()
     }
 
     /// Returns the number of internal couplings in the coupled model.
+    #[inline]
     pub fn n_ics(&self) -> usize {
         self.ic_map.values().map(|ics| ics.len()).sum()
     }
 
     /// Returns the number of external output couplings in the coupled model.
+    #[inline]
     pub fn n_eocs(&self) -> usize {
         self.eoc_map.values().map(|eocs| eocs.len()).sum()
     }
@@ -99,6 +104,7 @@ impl Coupled {
 
     /// Returns a reference to a component with the provided name.
     /// If the coupled model does not contain any model with that name, it returns [`None`].
+    #[inline]
     fn get_component(&self, name: &str) -> Option<&Component> {
         let index = *self.comps_map.get(name)?;
         Some(self.components.get(index)?.get_component())
@@ -228,19 +234,14 @@ impl Coupled {
         self.eocs.push((p_to, p_from));
     }
 
-    #[cfg(any(ffeature = "par_eoc"))]
-    fn flatten_map(map: &HashMap<String, HashMap<String, usize>>) -> Vec<Vec<usize>> {
-        map.values()
-            .map(|m| m.values().copied().collect())
-            .collect()
-    }
-
     #[cfg(feature = "par_xic")]
+    #[inline]
     pub(crate) fn build_par_xics(&mut self) {
         self.par_xics = self.xic_map.values().cloned().collect();
     }
 
     #[cfg(feature = "par_eoc")]
+    #[inline]
     pub(crate) fn build_par_eocs(&mut self) {
         self.par_eocs = self
             .eoc_map

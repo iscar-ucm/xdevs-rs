@@ -123,7 +123,7 @@ mod tests {
                 let probe = Arc::new(Mutex::new(TestProbe::default()));
                 let coupled = LI::create(width, depth, 0, 0, probe.clone());
                 let mut simulator = RootCoordinator::new(coupled);
-                simulator.simulate_time(f64::INFINITY);
+                simulator.simulate(f64::INFINITY);
 
                 let x = probe.lock().unwrap();
                 assert_eq!(expected_atomics(width, depth), x.n_atomics);

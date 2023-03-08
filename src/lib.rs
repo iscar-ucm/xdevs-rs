@@ -2,10 +2,10 @@ pub mod devstone;
 pub mod modeling;
 pub mod simulation;
 
-/// Helper traits for avoiding too big trait constraits.
+/// Helper trait for avoiding verbose trait constraints.
 #[cfg(not(feature = "par_any"))]
 pub trait DynRef: 'static {}
-/// Helper traits for avoiding too big trait constraits.
+/// Helper trait for avoiding verbose trait constraints.
 #[cfg(feature = "par_any")]
 pub trait DynRef: 'static + Sync + Send {}
 

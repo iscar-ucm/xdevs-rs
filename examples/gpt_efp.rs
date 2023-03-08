@@ -245,5 +245,5 @@ fn main() {
         _ => panic!("unknown model type. It must be either \"gpt\" or \"efp\""),
     };
     let mut simulator = RootCoordinator::new(coupled);
-    simulator.simulate_time(f64::INFINITY)
+    simulator.simulate(f64::INFINITY)
 }
