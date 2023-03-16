@@ -244,6 +244,6 @@ fn main() {
         "efp" => create_efp(period, time, observation),
         _ => panic!("unknown model type. It must be either \"gpt\" or \"efp\""),
     };
-    let mut simulator = RootCoordinator::new(coupled);
+    let mut simulator = RealTimeCoordinator::new(coupled, 1., 0.);
     simulator.simulate(f64::INFINITY)
 }

@@ -80,11 +80,11 @@ impl<T> Deref for Bag<T> {
     }
 }
 
-#[cfg(feature = "par_any")]
+#[cfg(feature = "rayon")]
 // Safety: if all the invariants are met, then a bag can be safely shared among threads.
 unsafe impl<T: Send> Send for Bag<T> {}
 
-#[cfg(feature = "par_any")]
+#[cfg(feature = "rayon")]
 // Safety: if all the invariants are met, then a bag can be safely shared among threads.
 unsafe impl<T: Sync> Sync for Bag<T> {}
 

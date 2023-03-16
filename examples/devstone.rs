@@ -40,7 +40,7 @@ fn main() {
     let duration = start.elapsed();
     println!("Model creation time: {duration:?}");
     let start = Instant::now();
-    let mut simulator = RootCoordinator::new(coupled);
+    let mut simulator = VirtualCoordinator::new(coupled);
     let duration = start.elapsed();
     println!("Simulator creation time: {duration:?}");
     let start = Instant::now();

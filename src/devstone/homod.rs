@@ -200,7 +200,7 @@ mod tests {
             for depth in (1..10).step_by(1) {
                 let probe = Arc::new(Mutex::new(TestProbe::default()));
                 let coupled = HOmod::create(width, depth, 0, 0, probe.clone());
-                let mut simulator = RootCoordinator::new(coupled);
+                let mut simulator = VirtualCoordinator::new(coupled);
                 simulator.simulate(f64::INFINITY);
 
                 let x = probe.lock().unwrap();

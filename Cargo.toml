@@ -1,6 +1,6 @@
 [package]
 name = "xdevs"
-version = "0.3.0"
+version = "0.4.0-alpha"
 authors = ["Román Cárdenas <rcardenas.rod@gmail.com>"]
 edition = "2021"
 description = "An open source DEVS M&S framework."
@@ -18,13 +18,12 @@ cpu-time = { version = "1.0", optional = true }
 
 [features]
 devstone_busy = ["cpu-time"]
-par_any = ["rayon"]
-par_start = ["par_any"]
-par_collection = ["par_any"]
-par_eoc = ["par_any"]
-par_xic = ["par_any"]
-par_transition = ["par_any"]
-par_stop = ["par_any"]
+par_start = ["rayon"]
+par_collection = ["rayon"]
+par_eoc = ["rayon"]
+par_xic = ["rayon"]
+par_transition = ["rayon"]
+par_stop = ["rayon"]
 par_xxc = ["par_eoc", "par_xic"]
 par_sim_no_xxc = ["par_collection", "par_transition"]
 par_sim = ["par_sim_no_xxc", "par_xxc"]

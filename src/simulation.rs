@@ -1,8 +1,13 @@
 use crate::modeling::{Atomic, Component, Coupled};
 use crate::DynRef;
-#[cfg(feature = "par_any")]
+#[cfg(feature = "rayon")]
 use rayon::prelude::*;
-use std::ops::{Deref, DerefMut};
+
+pub mod real_time;
+pub mod virtual_time;
+
+pub use real_time::RootCoordinator as RealTimeCoordinator;
+pub use virtual_time::RootCoordinator as VirtualCoordinator;
 
 /// Interface for simulating DEVS models. All DEVS models must implement this trait.
 pub trait Simulator: DynRef {
@@ -223,41 +228,5 @@ impl Simulator for Coupled {
         self.set_sim_t(t, t_next);
         self.clear_ports();
         t_next
-    }
-}
-
-/// Root coordinator for sequential simulations of DEVS models.
-pub struct RootCoordinator<T>(T);
-
-impl<T: Simulator> RootCoordinator<T> {
-    /// Creates a new root coordinator from a DEVS-compliant model.
-    pub fn new(model: T) -> Self {
-        Self(model)
-    }
-
-    /// Runs a simulation for a given period of time.
-    pub fn simulate(&mut self, t_end: f64) {
-        self.start(0.);
-        let mut t_next = self.get_t_next();
-        while t_next < t_end {
-            self.collection(t_next);
-            self.transition(t_next);
-            t_next = self.get_t_next();
-        }
-        self.stop(t_next);
-    }
-}
-
-impl<T> Deref for RootCoordinator<T> {
-    type Target = T;
-
-    fn deref(&self) -> &Self::Target {
-        &self.0
-    }
-}
-
-impl<T> DerefMut for RootCoordinator<T> {
-    fn deref_mut(&mut self) -> &mut Self::Target {
-        &mut self.0
     }
 }
