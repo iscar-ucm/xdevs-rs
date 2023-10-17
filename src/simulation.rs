@@ -48,7 +48,7 @@ pub trait Simulator: DynRef {
     }
 
     /// It starts the simulation, setting the initial time to t_start.
-    fn start(&mut self, t_start: f64);
+    fn start(&mut self, t_start: f64) -> f64;
 
     /// It stops the simulation, setting the last time to t_stop.
     fn stop(&mut self, t_stop: f64);
@@ -71,10 +71,11 @@ impl<T: Atomic + DynRef> Simulator for T {
         Atomic::get_component_mut(self)
     }
 
-    fn start(&mut self, t_start: f64) {
+    fn start(&mut self, t_start: f64) -> f64 {
         Atomic::start(self);
-        let ta = self.ta();
-        self.set_sim_t(t_start, t_start + ta);
+        let t_next = t_start + self.ta();
+        self.set_sim_t(t_start, t_next);
+        t_next
     }
 
     fn stop(&mut self, t_stop: f64) {
@@ -125,17 +126,14 @@ impl Simulator for Coupled {
     /// method and obtain the next simulation time.
     ///
     /// If the feature `par_start` is activated, the iteration is parallelized.
-    fn start(&mut self, t_start: f64) {
+    fn start(&mut self, t_start: f64) -> f64 {
         #[cfg(feature = "par_start")]
         let iter = self.components.par_iter_mut();
         #[cfg(not(feature = "par_start"))]
         let iter = self.components.iter_mut();
         // we obtain the minimum next time of all the subcomponents
         let t_next = iter
-            .map(|c| {
-                c.start(t_start);
-                c.get_t_next()
-            })
+            .map(|c| c.start(t_start))
             .min_by(|a, b| a.total_cmp(b))
             .unwrap_or(f64::INFINITY);
         // and set the inner component's last and next times
@@ -145,6 +143,8 @@ impl Simulator for Coupled {
         self.build_par_xics();
         #[cfg(feature = "par_eoc")]
         self.build_par_eocs();
+
+        t_next
     }
 
     /// Iterates over all the subcomponents to call their [`Simulator::stop`]
@@ -237,12 +237,10 @@ impl<T: Simulator> RootCoordinator<T> {
 
     /// Runs a simulation for a given period of time.
     pub fn simulate(&mut self, t_end: f64) {
-        self.start(0.);
-        let mut t_next = self.get_t_next();
+        let mut t_next = self.start(0.);
         while t_next < t_end {
             self.collection(t_next);
-            self.transition(t_next);
-            t_next = self.get_t_next();
+            t_next = self.transition(t_next);
         }
         self.stop(t_next);
     }

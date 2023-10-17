@@ -26,8 +26,14 @@ fn main() {
         .parse()
         .expect("depth could not be parsed");
 
-    let int_delay = 0;
-    let ext_delay = 0;
+    let int_delay = match args.get(4) {
+        Some(arg) => arg.parse().expect("int delay could not be parsed"),
+        None => 0,
+    };
+    let ext_delay = match args.get(5) {
+        Some(arg) => arg.parse().expect("ext delay could not be parsed"),
+        None => int_delay,
+    };
 
     let start = Instant::now();
     let coupled = match model_type.as_str() {

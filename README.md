@@ -40,9 +40,9 @@ select where you want to take advantage of parallelism:
 We provide additional features to select handy combinations of features:
 
 - `par_xxc`: alias for `par_eoc` and `par_xic` (we **DO NOT** recommend this feature, it is likely to be removed).
-- `par_sim_no_xcc`: alias for `par_collection` and `par_transition`.
-- `par_sim`: alias for `par_xxc` and `par_sim_no_xcc` (we **DO NOT** recommend this feature, it is likely to be removed).
-- `par_all_no_xcc`: alias for `par_start`, `par_sim_no_xcc`, and `par_stop` (**this is our favourite**).
+- `par_sim_no_xxc`: alias for `par_collection` and `par_transition`.
+- `par_sim`: alias for `par_xxc` and `par_sim_no_xxc` (we **DO NOT** recommend this feature, it is likely to be removed).
+- `par_all_no_xxc`: alias for `par_start`, `par_sim_no_xxc`, and `par_stop` (**THIS IS OUR FAVOURITE**).
 - `par_all`: alias for `par_xxc` and `par_all_no_xcc` (we **DO NOT** recommend this feature, it is likely to be removed).
 
 ## Work in progress 👷‍♀️👷👷‍♂️
