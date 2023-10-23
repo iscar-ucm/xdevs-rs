@@ -5,6 +5,8 @@ use crate::DynRef;
 use std::collections::HashMap;
 use std::sync::Arc;
 
+pub(crate) type Coupling = (Arc<dyn Port>, Arc<dyn Port>);
+
 /// Coupled DEVS model.
 pub struct Coupled {
     /// Component wrapped by the coupled model.
@@ -19,16 +21,16 @@ pub struct Coupled {
     eoc_map: HashMap<String, HashMap<String, usize>>,
     /// Components of the DEVS coupled model (serialized for better performance).
     pub(crate) components: Vec<Box<dyn Simulator>>,
-    /// External input and internal couplings (serialized for better performance).
-    pub(crate) xics: Vec<(Arc<dyn Port>, Arc<dyn Port>)>,
+    /// External input couplings (serialized for better performance).
+    pub(crate) eics: Vec<Coupling>,
+    /// Internal couplings (serialized for better performance).
+    pub(crate) ics: Vec<Coupling>,
     /// External output couplings (serialized for better performance).
-    pub(crate) eocs: Vec<(Arc<dyn Port>, Arc<dyn Port>)>,
-    #[cfg(feature = "par_xic")]
-    xic_map: HashMap<String, Vec<usize>>,
-    #[cfg(feature = "par_xic")]
-    pub(crate) par_xics: Vec<Vec<usize>>,
-    #[cfg(feature = "par_eoc")]
-    pub(crate) par_eocs: Vec<Vec<usize>>,
+    pub(crate) eocs: Vec<Coupling>,
+    #[cfg(feature = "par_couplings")]
+    pub(crate) par_eics: Vec<Vec<Coupling>>,
+    #[cfg(feature = "par_couplings")]
+    pub(crate) par_xxcs: Vec<Vec<Coupling>>,
 }
 
 impl Coupled {
@@ -41,14 +43,13 @@ impl Coupled {
             ic_map: HashMap::new(),
             eoc_map: HashMap::new(),
             components: Vec::new(),
-            xics: Vec::new(),
+            eics: Vec::new(),
+            ics: Vec::new(),
             eocs: Vec::new(),
-            #[cfg(feature = "par_xic")]
-            xic_map: HashMap::new(),
-            #[cfg(feature = "par_xic")]
-            par_xics: Vec::new(),
-            #[cfg(feature = "par_eoc")]
-            par_eocs: Vec::new(),
+            #[cfg(feature = "par_couplings")]
+            par_eics: Vec::new(),
+            #[cfg(feature = "par_couplings")]
+            par_xxcs: Vec::new(),
         }
     }
 
@@ -139,16 +140,8 @@ impl Coupled {
         if coups.contains_key(&source_key) {
             panic!("coupling already exists");
         }
-        coups.insert(source_key, self.xics.len());
-        #[cfg(feature = "par_xic")]
-        {
-            let destination_key = component_to.to_string() + "-" + port_to;
-            self.xic_map
-                .entry(destination_key)
-                .or_default()
-                .push(self.xics.len());
-        }
-        self.xics.push((p_to, p_from));
+        coups.insert(source_key, self.eics.len());
+        self.eics.push((p_to, p_from));
     }
 
     /// Adds a new IC to the model.
@@ -189,16 +182,8 @@ impl Coupled {
         if coups.contains_key(&source_key) {
             panic!("coupling already exists");
         }
-        coups.insert(source_key, self.xics.len());
-        #[cfg(feature = "par_xic")]
-        {
-            let destination_key = component_to.to_string() + "-" + port_to;
-            self.xic_map
-                .entry(destination_key)
-                .or_default()
-                .push(self.xics.len());
-        }
-        self.xics.push((p_to, p_from));
+        coups.insert(source_key, self.ics.len());
+        self.ics.push((p_to, p_from));
     }
 
     /// Adds a new EOC to the model.
@@ -234,19 +219,39 @@ impl Coupled {
         self.eocs.push((p_to, p_from));
     }
 
-    #[cfg(feature = "par_xic")]
+    #[cfg(feature = "par_couplings")]
     #[inline]
-    pub(crate) fn build_par_xics(&mut self) {
-        self.par_xics = self.xic_map.values().cloned().collect();
+    pub(crate) fn build_par_eics(&mut self) {
+        for coups in self.eic_map.values() {
+            let mut x = Vec::new();
+            for &source in coups.values() {
+                x.push(self.eics[source].clone());
+            }
+            self.par_eics.push(x);
+        }
     }
 
-    #[cfg(feature = "par_eoc")]
+    #[cfg(feature = "par_couplings")]
+    #[inline]
+    pub(crate) fn build_par_ics(&mut self) {
+        for coups in self.ic_map.values() {
+            let mut x = Vec::new();
+            for &source in coups.values() {
+                x.push(self.ics[source].clone());
+            }
+            self.par_xxcs.push(x);
+        }
+    }
+
+    #[cfg(feature = "par_couplings")]
     #[inline]
     pub(crate) fn build_par_eocs(&mut self) {
-        self.par_eocs = self
-            .eoc_map
-            .values()
-            .map(|m| m.values().copied().collect())
-            .collect();
+        for coups in self.eoc_map.values() {
+            let mut x = Vec::new();
+            for &source in coups.values() {
+                x.push(self.eocs[source].clone());
+            }
+            self.par_xxcs.push(x);
+        }
     }
 }

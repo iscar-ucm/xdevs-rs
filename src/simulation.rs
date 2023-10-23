@@ -36,9 +36,21 @@ pub trait Simulator: DynRef {
         self.get_component_mut().set_sim_t(t_last, t_next);
     }
 
+    #[inline]
+    fn clear_input(&mut self) {
+        // Safety: simulator clearing its input
+        unsafe { self.get_component_mut().clear_input() };
+    }
+
+    #[inline]
+    fn clear_output(&mut self) {
+        // Safety: simulator clearing its output
+        unsafe { self.get_component_mut().clear_output() };
+    }
+
     /// Removes all the messages from all the ports.
     #[inline]
-    fn clear_ports(&mut self) {
+    fn clear(&mut self) {
         let component = self.get_component_mut();
         // Safety: simulator clearing its ports
         unsafe {
@@ -95,18 +107,20 @@ impl<T: Atomic + DynRef> Simulator for T {
         if !unsafe { self.get_component().is_input_empty() } {
             if t == t_next {
                 Atomic::delta_conf(self);
+                self.clear_output();
             } else {
                 let e = t - self.get_t_last();
                 Atomic::delta_ext(self, e);
             }
+            self.clear_input();
         } else if t == t_next {
             Atomic::delta_int(self);
+            self.clear_output();
         } else {
             return t_next;
         }
         let t_next = t + Atomic::ta(self);
         self.set_sim_t(t, t_next);
-        self.clear_ports();
         t_next
     }
 }
@@ -139,10 +153,12 @@ impl Simulator for Coupled {
         // and set the inner component's last and next times
         self.set_sim_t(t_start, t_next);
 
-        #[cfg(feature = "par_xic")]
-        self.build_par_xics();
-        #[cfg(feature = "par_eoc")]
-        self.build_par_eocs();
+        #[cfg(feature = "par_couplings")]
+        {
+            self.build_par_eics();
+            self.build_par_eocs();
+            self.build_par_ics();
+        }
 
         t_next
     }
@@ -174,19 +190,25 @@ impl Simulator for Coupled {
             let iter = self.components.iter_mut();
             iter.for_each(|c| c.collection(t));
 
-            #[cfg(feature = "par_eoc")]
-            self.par_eocs.par_iter().for_each(|coups| {
-                for &i in coups.iter() {
-                    let (port_to, port_from) = &self.eocs[i];
+            #[cfg(feature = "par_couplings")]
+            self.par_xxcs.par_iter().for_each(|coups| {
+                coups.iter().for_each(|(port_to, port_from)| {
                     // Safety: coupled model propagating messages
                     unsafe { port_from.propagate(&**port_to) };
-                }
+                });
             });
-            #[cfg(not(feature = "par_eoc"))]
-            self.eocs.iter().for_each(|(port_to, port_from)| {
-                // Safety: coupled model propagating messages
-                unsafe { port_from.propagate(&**port_to) };
-            });
+
+            #[cfg(not(feature = "par_couplings"))]
+            {
+                self.eocs.iter().for_each(|(port_to, port_from)| {
+                    // Safety: coupled model propagating messages
+                    unsafe { port_from.propagate(&**port_to) };
+                });
+                self.ics.iter().for_each(|(port_to, port_from)| {
+                    // Safety: coupled model propagating messages
+                    unsafe { port_from.propagate(&**port_to) };
+                });
+            }
         }
     }
 
@@ -199,30 +221,41 @@ impl Simulator for Coupled {
     ///
     /// If the feature `par_transition` is activated, the iteration is parallelized.
     fn transition(&mut self, t: f64) -> f64 {
-        #[cfg(feature = "par_xic")]
-        self.par_xics.par_iter().for_each(|coups| {
-            for &i in coups.iter() {
-                let (port_to, port_from) = &self.xics[i];
+        // Safety: simulator checking if its input is empty
+        let is_external = !unsafe { self.get_component().is_input_empty() };
+        // Propagate messages according to EICs only if there are messages in the input ports
+        if is_external {
+            #[cfg(feature = "par_couplings")]
+            self.par_eics.par_iter().for_each(|coups| {
+                coups.iter().for_each(|(port_to, port_from)| {
+                    // Safety: coupled model propagating messages
+                    unsafe { port_from.propagate(&**port_to) };
+                });
+            });
+            #[cfg(not(feature = "par_couplings"))]
+            self.eics.iter().for_each(|(port_to, port_from)| {
                 // Safety: coupled model propagating messages
                 unsafe { port_from.propagate(&**port_to) };
-            }
-        });
-        #[cfg(not(feature = "par_xic"))]
-        self.xics.iter().for_each(|(port_to, port_from)| {
-            // Safety: coupled model propagating messages
-            unsafe { port_from.propagate(&**port_to) };
-        });
-        #[cfg(feature = "par_transition")]
-        let iterator = self.components.par_iter_mut();
-        #[cfg(not(feature = "par_transition"))]
-        let iterator = self.components.iter_mut();
-        let t_next = iterator
-            .map(|c| c.transition(t))
-            .min_by(|a, b| a.total_cmp(b))
-            .unwrap_or(f64::INFINITY);
-        self.set_sim_t(t, t_next);
-        self.clear_ports();
-        t_next
+            });
+            self.clear_input();
+        }
+        let is_internal = t >= self.get_t_next();
+        if is_internal {
+            self.clear_output();
+        }
+        // Nested call only if there are messages in the input ports or if the time has come
+        if is_external || is_internal {
+            #[cfg(feature = "par_transition")]
+            let iterator = self.components.par_iter_mut();
+            #[cfg(not(feature = "par_transition"))]
+            let iterator = self.components.iter_mut();
+            let t_next = iterator
+                .map(|c| c.transition(t))
+                .min_by(|a, b| a.total_cmp(b))
+                .unwrap_or(f64::INFINITY);
+            self.set_sim_t(t, t_next);
+        }
+        self.get_t_next()
     }
 }
 
