@@ -1,8 +1,9 @@
 use crate::DynRef;
-use std::any::Any;
-use std::cell::UnsafeCell;
-use std::ops::Deref;
-use std::sync::Arc;
+use std::{any::Any, cell::UnsafeCell, ops::Deref, str::FromStr, sync::Arc};
+
+pub trait PortVal: DynRef + Clone + FromStr + ToString {}
+
+impl<T: DynRef + Clone + FromStr + ToString> PortVal for T {}
 
 /// Trait implemented by DEVS ports. It does not consider message types nor port directions.
 pub(crate) trait Port: DynRef {
@@ -34,6 +35,10 @@ pub(crate) trait Port: DynRef {
     /// This method can only be executed by a [`super::Coupled`] model when propagating
     /// messages in its [`crate::simulation::Simulator`] trait implementation.
     unsafe fn propagate(&self, port_to: &dyn Port);
+
+    unsafe fn inject(&self, value: &str) -> Result<(), ()>;
+
+    unsafe fn eject(&self) -> Vec<String>;
 }
 
 /// Bag of DEVS messages. Each port has its own bag.
@@ -80,15 +85,15 @@ impl<T> Deref for Bag<T> {
     }
 }
 
-#[cfg(feature = "par_any")]
+#[cfg(any(feature = "par_any", feature = "async_rt"))]
 // Safety: if all the invariants are met, then a bag can be safely shared among threads.
 unsafe impl<T: Send> Send for Bag<T> {}
 
-#[cfg(feature = "par_any")]
+#[cfg(any(feature = "par_any", feature = "async_rt"))]
 // Safety: if all the invariants are met, then a bag can be safely shared among threads.
 unsafe impl<T: Sync> Sync for Bag<T> {}
 
-impl<T: DynRef + Clone> Port for Bag<T> {
+impl<T: PortVal> Port for Bag<T> {
     #[inline]
     fn as_any(&self) -> &dyn Any {
         self
@@ -113,6 +118,22 @@ impl<T: DynRef + Clone> Port for Bag<T> {
     unsafe fn propagate(&self, port_to: &dyn Port) {
         let port_to = port_to.as_any().downcast_ref::<Bag<T>>().unwrap();
         port_to.borrow_mut().extend_from_slice(self.borrow());
+    }
+
+    #[inline]
+    unsafe fn inject(&self, value: &str) -> Result<(), ()> {
+        match value.parse() {
+            Ok(value) => {
+                self.borrow_mut().push(value);
+                Ok(())
+            }
+            Err(_) => Err(()),
+        }
+    }
+
+    #[inline]
+    unsafe fn eject(&self) -> Vec<String> {
+        self.borrow_mut().iter().map(|v| v.to_string()).collect()
     }
 }
 

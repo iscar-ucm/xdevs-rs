@@ -89,6 +89,7 @@ impl<T: Atomic + DynRef> Simulator for T {
         Atomic::get_component_mut(self)
     }
 
+    #[inline]
     fn start(&mut self, t_start: f64) -> f64 {
         Atomic::start(self);
         let t_next = t_start + self.ta();
@@ -96,17 +97,20 @@ impl<T: Atomic + DynRef> Simulator for T {
         t_next
     }
 
+    #[inline]
     fn stop(&mut self, t_stop: f64) {
         self.set_sim_t(t_stop, f64::INFINITY);
         Atomic::stop(self);
     }
 
+    #[inline]
     fn collection(&mut self, t: f64) {
         if t >= self.get_t_next() {
             Atomic::lambda(self)
         }
     }
 
+    #[inline]
     fn transition(&mut self, t: f64) -> f64 {
         let t_next = self.get_t_next();
         // Safety: simulator executing its transition function
@@ -149,6 +153,7 @@ impl Simulator for Coupled {
     ///
     /// If the feature `par_couplings` is activated, the EICs, EOCs, and ICs are built
     /// for enabling parallel event propagation.
+    #[inline]
     fn start(&mut self, t_start: f64) -> f64 {
         #[cfg(feature = "par_start")]
         let iter = self.components.par_iter_mut();
@@ -176,6 +181,7 @@ impl Simulator for Coupled {
     /// method and obtain the next simulation time.
     ///
     /// If the feature `par_stop` is activated, the iteration is parallelized.
+    #[inline]
     fn stop(&mut self, t_stop: f64) {
         #[cfg(feature = "par_stop")]
         let iter = self.components.par_iter_mut();
@@ -191,6 +197,7 @@ impl Simulator for Coupled {
     ///
     /// If the feature `par_collection` is activated, the iteration over subcomponents is parallelized.
     /// If the feature `par_couplings` is activated, the iteration is over couplings is parallelized.
+    #[inline]
     fn collection(&mut self, t: f64) {
         if t >= self.get_t_next() {
             #[cfg(feature = "par_collection")]
@@ -229,6 +236,7 @@ impl Simulator for Coupled {
     ///
     /// If the feature `par_couplings` is activated, the iteration over EICs is parallelized.
     /// If the feature `par_transition` is activated, the iteration over subcomponents is parallelized.
+    #[inline]
     fn transition(&mut self, t: f64) -> f64 {
         // Safety: simulator checking if its input is empty
         let is_external = !unsafe { self.get_component().is_input_empty() };
@@ -266,6 +274,47 @@ impl Simulator for Coupled {
         }
         self.get_t_next()
     }
+}
+
+#[macro_export]
+macro_rules! impl_coupled {
+    ($struct_name:ident) => {
+        $crate::impl_coupled!($struct_name, coupled);
+    };
+    ($struct_name:ident, $coupled_name:ident) => {
+        impl $crate::simulation::Simulator for $struct_name {
+            #[inline]
+            fn get_component(&self) -> &$crate::modeling::Component {
+                self.$coupled_name.get_component()
+            }
+            #[inline]
+            fn get_component_mut(&mut self) -> &mut $crate::modeling::Component {
+                self.$coupled_name.get_component_mut()
+            }
+            #[inline]
+            fn start(&mut self, t_start: f64) -> f64 {
+                self.$coupled_name.start(t_start)
+            }
+            #[inline]
+            fn stop(&mut self, t_stop: f64) {
+                self.$coupled_name.stop(t_stop)
+            }
+            #[inline]
+            fn collection(&mut self, t: f64) {
+                self.$coupled_name.collection(t)
+            }
+            #[inline]
+            fn transition(&mut self, t: f64) -> f64 {
+                self.$coupled_name.transition(t)
+            }
+        }
+
+        impl From<$struct_name> for $crate::modeling::Coupled {
+            fn from(coupled: $struct_name) -> Self {
+                coupled.coupled
+            }
+        }
+    };
 }
 
 /// Root coordinator for sequential simulations of DEVS models.

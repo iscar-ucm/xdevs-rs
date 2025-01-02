@@ -1,7 +1,14 @@
-use super::port::{Bag, InPort, OutPort, Port};
-use crate::DynRef;
-use std::collections::HashMap;
-use std::sync::Arc;
+use crate::{
+    modeling::port::{Bag, InPort, OutPort, Port, PortVal},
+    Event,
+};
+use std::{collections::HashMap, sync::Arc};
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum Error {
+    UnknownPort,
+    ValueParseError,
+}
 
 /// DEVS component. Models must comprise a component to fulfill the [`crate::simulation::Simulator`] trait.
 pub struct Component {
@@ -62,7 +69,7 @@ impl Component {
 
     /// Adds a new input port of type `T` and returns a reference to it.
     /// It panics if there is already an input port with the same name.
-    pub fn add_in_port<T: DynRef + Clone>(&mut self, name: &str) -> InPort<T> {
+    pub fn add_in_port<T: PortVal>(&mut self, name: &str) -> InPort<T> {
         if self.in_map.contains_key(name) {
             panic!("component already contains input port with the name provided");
         }
@@ -74,7 +81,7 @@ impl Component {
 
     /// Adds a new output port of type `T` and returns a reference to it.
     /// It panics if there is already an output port with the same name.
-    pub fn add_out_port<T: DynRef + Clone>(&mut self, name: &str) -> OutPort<T> {
+    pub fn add_out_port<T: PortVal>(&mut self, name: &str) -> OutPort<T> {
         if self.out_map.contains_key(name) {
             panic!("component already contains output port with the name provided");
         }
@@ -129,5 +136,23 @@ impl Component {
     #[inline]
     pub(crate) unsafe fn clear_output(&mut self) {
         self.out_ports.iter_mut().for_each(|p| p.clear());
+    }
+
+    #[cfg(feature = "async_rt")]
+    pub(crate) unsafe fn inject(&self, event: Event) -> Result<(), Error> {
+        self.get_in_port(event.port())
+            .ok_or(Error::UnknownPort)?
+            .inject(event.value())
+            .map_err(|_| Error::ValueParseError)
+    }
+
+    #[cfg(feature = "async_rt")]
+    pub(crate) unsafe fn eject(&self) -> impl Iterator<Item = Event> + '_ {
+        self.out_map.iter().flat_map(|(port_name, n)| {
+            self.out_ports[*n]
+                .eject()
+                .into_iter()
+                .map(move |value| Event::new(port_name.to_string(), value))
+        })
     }
 }

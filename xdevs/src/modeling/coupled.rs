@@ -1,9 +1,11 @@
-use super::port::Port;
-use super::{Component, InPort, OutPort};
-use crate::simulation::Simulator;
-use crate::DynRef;
-use std::collections::HashMap;
-use std::sync::Arc;
+use crate::{
+    modeling::{
+        port::{Port, PortVal},
+        Component, InPort, OutPort,
+    },
+    simulation::Simulator,
+};
+use std::{collections::HashMap, sync::Arc};
 
 pub(crate) type Coupling = (Arc<dyn Port>, Arc<dyn Port>);
 
@@ -80,14 +82,14 @@ impl Coupled {
     /// Adds a new input port of type `T` and returns a reference to it.
     /// It panics if there is already an input port with the same name.
     #[inline]
-    pub fn add_in_port<T: DynRef + Clone>(&mut self, name: &str) -> InPort<T> {
+    pub fn add_in_port<T: PortVal>(&mut self, name: &str) -> InPort<T> {
         self.component.add_in_port::<T>(name)
     }
 
     /// Adds a new output port of type `T` and returns a reference to it.
     /// It panics if there is already an output port with the same name.
     #[inline]
-    pub fn add_out_port<T: DynRef + Clone>(&mut self, name: &str) -> OutPort<T> {
+    pub fn add_out_port<T: PortVal>(&mut self, name: &str) -> OutPort<T> {
         self.component.add_out_port::<T>(name)
     }
 

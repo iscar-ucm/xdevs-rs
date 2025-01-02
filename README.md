@@ -1,4 +1,4 @@
-# xDEVS.rs
+# `xDEVS.rs`
 
 Version of the xDEVS simulator for Rust projects.
 It allows you to build and simulate computational models following the DEVS formalism.
@@ -30,22 +30,24 @@ select where you want to take advantage of parallelism:
 
 - `par_start`: it runs in parallel the start methods of your model before starting to simulate.
 - `par_collection`: it executes the lambdas of your models in parallel.
-- `par_eoc`: it propagates the EOCs in parallel (we **DO NOT** recommend this feature, it is likely to be removed).
-- `par_xic`: it propagates the EICs and ICs in parallel (we **DO NOT** recommend this feature, it is likely to be removed).
-- `par_transition`: it executes the deltas of your models in parallel (we **DO** recommend this feature).
+- `par_couplings`: it propagates the couplings in parallel.
+- `par_transition`: it executes the deltas of your models in parallel.
 - `par_stop`: it runs in parallel the stop methods of your model after the simulation.
 
 ### Useful combined features
 
 We provide additional features to select handy combinations of features:
 
-- `par_xxc`: alias for `par_eoc` and `par_xic` (we **DO NOT** recommend this feature, it is likely to be removed).
-- `par_sim_no_xxc`: alias for `par_collection` and `par_transition`.
-- `par_sim`: alias for `par_xxc` and `par_sim_no_xxc` (we **DO NOT** recommend this feature, it is likely to be removed).
-- `par_all_no_xxc`: alias for `par_start`, `par_sim_no_xxc`, and `par_stop` (**THIS IS OUR FAVOURITE**).
-- `par_all`: alias for `par_xxc` and `par_all_no_xcc` (we **DO NOT** recommend this feature, it is likely to be removed).
+- `par_all_no_couplings`: alias for `par_start`, `par_collection`, `par_transition`, and `par_stop` (**THIS IS OUR FAVOURITE**).
+- `par_all`: alias for `par_all_no_couplings` and `par_couplings`.
 
-## Work in progress 👷‍♀️👷👷‍♂️
+## Real-Time (RT) simulation ready ⏱
 
-We are still working on this crate, and hope to add a plethora of cool features in the near future.
-Stay tuned! If you want to contribute, feel free to open an issue on GitHub, we will reply ASAP.
+You can run your simulations in real-time!
+This feature is specially useful for Hardware-in-the-Loop (HIL) simulation, Digital Twins (DTs),
+and hybrid environments where simulation and real hardware coexist.
+
+## References 📖
+
+1. R. Cárdenas, P. Arroba, and J. L. Risco-Martín, "[Lock-Free Simulation Algorithm to Enhance the Performance of Sequential and Parallel DEVS Simulators in Shared-Memory Architectures](https://papers.ssrn.com/sol3/papers.cfm?abstract_id=5035228)," 2024 (PREPRINT).
+2. R. Cárdenas, P. Arroba and J. L. Risco-Martín, "[A New Family of XDEVS Simulators for Enhanced Performance](https://ieeexplore.ieee.org/document/10155396)," 2023 Annual Modeling and Simulation Conference (ANNSIM), Hamilton, ON, Canada, 2023, pp. 668-679.
