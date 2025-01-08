@@ -5,7 +5,7 @@
     },
     "rust-analyzer.cargo.features": [
         "par_all",
-        "async_rt",
+        "rt",
         "mqtt",
     ],
 }

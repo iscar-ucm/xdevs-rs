@@ -1,4 +1,7 @@
-use xdevs::{gpt::Processor, simulation::rt::RootCoordinator};
+use xdevs::{
+    gpt::Processor,
+    simulation::rt::{RootCoordinator, RootCoordinatorConfig},
+};
 use xdevs_utils::mqtt::MqttHandler;
 
 #[tokio::main]
@@ -30,9 +33,14 @@ async fn main() {
     let max_jitter = None;
     let queue_size = 10;
     let window = None;
-    let mut simulator = RootCoordinator::new(processor, time_scale, max_jitter);
-    simulator.create_input_queue(queue_size, window);
-    simulator.create_output_queue(queue_size);
+    let config = RootCoordinatorConfig::new(
+        time_scale,
+        max_jitter,
+        Some(queue_size),
+        Some(queue_size),
+        window,
+    );
+    let mut simulator = RootCoordinator::new(processor, config);
 
     // We spawn the MQTT handler and the simulation
     let mut handles = simulator.spawn_handler(mqtt_handler);

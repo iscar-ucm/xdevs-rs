@@ -138,7 +138,6 @@ impl Component {
         self.out_ports.iter_mut().for_each(|p| p.clear());
     }
 
-    #[cfg(feature = "async_rt")]
     pub(crate) unsafe fn inject(&self, event: Event) -> Result<(), Error> {
         self.get_in_port(event.port())
             .ok_or(Error::UnknownPort)?
@@ -146,7 +145,6 @@ impl Component {
             .map_err(|_| Error::ValueParseError)
     }
 
-    #[cfg(feature = "async_rt")]
     pub(crate) unsafe fn eject(&self) -> impl Iterator<Item = Event> + '_ {
         self.out_map.iter().flat_map(|(port_name, n)| {
             self.out_ports[*n]

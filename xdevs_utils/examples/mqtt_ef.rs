@@ -30,9 +30,14 @@ async fn main() {
     let max_jitter = None;
     let queue_size = 10;
     let window = None;
-    let mut simulator = RootCoordinator::new(ef, time_scale, max_jitter);
-    simulator.create_input_queue(queue_size, window);
-    simulator.create_output_queue(queue_size);
+    let config = RootCoordinatorConfig::new(
+        time_scale,
+        max_jitter,
+        Some(queue_size),
+        Some(queue_size),
+        window,
+    );
+    let mut simulator = RootCoordinator::new(ef, config);
 
     // We spawn the MQTT handler and the simulation
     let mut handles = simulator.spawn_handler(mqtt_handler);

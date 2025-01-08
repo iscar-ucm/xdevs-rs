@@ -4,15 +4,15 @@ pub mod modeling;
 pub mod simulation;
 
 /// Helper trait for avoiding verbose trait constraints.
-#[cfg(not(any(feature = "par_any", feature = "async_rt")))]
+#[cfg(not(any(feature = "par_any", feature = "rt")))]
 pub trait DynRef: 'static {}
 /// Helper trait for avoiding verbose trait constraints.
-#[cfg(any(feature = "par_any", feature = "async_rt"))]
+#[cfg(any(feature = "par_any", feature = "rt"))]
 pub trait DynRef: 'static + Sync + Send {}
 
-#[cfg(not(any(feature = "par_any", feature = "async_rt")))]
+#[cfg(not(any(feature = "par_any", feature = "rt")))]
 impl<T: 'static + ?Sized> DynRef for T {}
-#[cfg(any(feature = "par_any", feature = "async_rt"))]
+#[cfg(any(feature = "par_any", feature = "rt"))]
 impl<T: 'static + Sync + Send + ?Sized> DynRef for T {}
 
 /// In xDEVS, events are defined as tuples port-value.

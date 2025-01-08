@@ -53,6 +53,13 @@ async fn main() {
     let max_jitter = None;
     let queue_size = 10;
     let window = None;
+    let rt_config = RootCoordinatorConfig::new(
+        time_scale,
+        max_jitter,
+        Some(queue_size),
+        Some(queue_size),
+        window,
+    );
 
     let mqtt_root = "xdevs/efp";
     let mqtt_host = "0.0.0.0";
@@ -62,9 +69,7 @@ async fn main() {
 
     let processor = Processor::new("processor", proc_time);
 
-    let mut proc_sim = RootCoordinator::new(processor, time_scale, max_jitter);
-    proc_sim.create_input_queue(queue_size, window);
-    proc_sim.create_output_queue(queue_size);
+    let mut proc_sim = RootCoordinator::new(processor, rt_config);
 
     let mut proc_mqtt = MqttHandler::new(
         "xdevs/efp/components/processor",
@@ -86,9 +91,7 @@ async fn main() {
     handles.push(tokio::task::spawn(proc_sim.simulate(obst_time + 10.)));
 
     let ef = ExperimentalFrame::new("ef", req_period, obst_time);
-    let mut ef_sim = RootCoordinator::new(ef, time_scale, max_jitter);
-    ef_sim.create_input_queue(queue_size, window);
-    ef_sim.create_output_queue(queue_size);
+    let mut ef_sim = RootCoordinator::new(ef, rt_config);
 
     let mut ef_mqtt = MqttHandler::new("xdevs/efp/components/ef", "ef", mqtt_host, mqtt_port);
     let will = LastWill::new("efp/components/ef", "good bye", QoS::AtMostOnce, false);

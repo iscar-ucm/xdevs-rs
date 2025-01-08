@@ -2,10 +2,18 @@ use std::env;
 use xdevs::{
     gpt::{Efp, Gpt},
     modeling::Coupled,
-    simulation::{rt, RootCoordinator},
+    simulation::rt::{RootCoordinator, RootCoordinatorConfig},
 };
 
-fn main() {
+#[tokio::main]
+async fn main() {
+    let subscriber = tracing_subscriber::fmt()
+        .with_max_level(tracing::Level::DEBUG)
+        .finish();
+
+    // use that subscriber to process traces emitted after this point
+    tracing::subscriber::set_global_default(subscriber).unwrap();
+
     let args: Vec<String> = env::args().collect();
     let model_type = match args.get(1) {
         Some(model) => model.clone(),
@@ -21,11 +29,22 @@ fn main() {
         "efp" => Efp::new("efp", period, time, observation).into(),
         _ => panic!("unknown model type. It must be either \"gpt\" or \"efp\""),
     };
-    let mut simulator = RootCoordinator::new(coupled);
 
     let time_scale = 1.;
     let max_jitter = None;
-    let sleep = rt::sleep(time_scale, max_jitter);
+    let output_capacity = Some(10);
+    let input_buffer = Some(10);
+    let input_window = None;
 
-    simulator.simulate_rt(observation + 10., sleep, |_| {});
+    let config = RootCoordinatorConfig::new(
+        time_scale,
+        max_jitter,
+        output_capacity,
+        input_buffer,
+        input_window,
+    );
+
+    let simulator = RootCoordinator::new(coupled, config);
+
+    simulator.simulate(observation + 10.).await;
 }

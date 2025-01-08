@@ -19,7 +19,7 @@ tokio = { version = "1.42", features = ["full"], optional = true }
 tracing = { version = "0.1", optional = true }
 
 [dev-dependencies]
-tracing-subscriber = {version = "0.3", features = ["env-filter"]}
+tracing-subscriber = { version = "0.3" }
 
 [features]
 devstone_busy = ["cpu-time"]
@@ -31,19 +31,7 @@ par_stop = ["par_any"]
 par_all_no_couplings = ["par_start", "par_collection", "par_transition", "par_stop"]
 par_couplings = ["par_any"]
 par_all = ["par_all_no_couplings", "par_couplings"]
-async_rt = ["tokio", "tracing"]
-
-[[example]]
-name = "devstone"
-
-[[example]]
-name = "gpt_efp"
-
-[[example]]
-name = "gpt_efp_rt"
-
-[[example]]
-name = "gpt_efp_async_rt"
+rt = ["tokio", "tracing"]
 
 [package.metadata.docs.rs]
-features = ["par_all"]
+features = ["par_all", "rt"]

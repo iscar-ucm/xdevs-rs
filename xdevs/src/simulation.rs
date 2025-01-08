@@ -6,6 +6,7 @@ use crate::{
 use rayon::prelude::*;
 use std::ops::{Deref, DerefMut};
 
+#[cfg(feature = "rt")]
 pub mod rt;
 
 /// Interface for simulating DEVS models. All DEVS models must implement this trait.
@@ -335,58 +336,6 @@ impl<T: Simulator> RootCoordinator<T> {
             t_next = self.transition(t_next);
         }
         self.stop(t_next);
-    }
-
-    /// Runs a Real-Time (RT) simulation for a given period of time.
-    ///
-    /// # The `wait_event` closure
-    ///
-    /// RT behavior must be implemented in the `wait_event` closure.
-    /// The `wait_event` closure behaves as a function that accepts two arguments:
-    ///
-    /// - `t_next: f64` - The next simulation time in which a model state transition is expected.
-    /// - `component: &T` - A reference to the model under study.
-    ///
-    /// It must return the simulation time when the next event happens.
-    ///
-    ///  If no external event is received, the `wait_event` closure waits until the next internal
-    /// event and returns `t_next`, which now is the current simulation time. We provide an
-    /// [`rt::sleep`] closure that can be used as a `wait_event` closure for this scenario.
-    ///
-    /// When external events may occur, the behavior of the `wait_event` closure is more complex.
-    /// Now, the `wait_event` closure must wait for external events without exceeding the time for
-    /// the next internal event. If an external event is received, the `wait_event` closure must
-    /// inject the events into the model's input ports and return the simulation time when the event
-    /// was received. We provide an [`rt::wait_event`] closure that can be used as a `wait_event`
-    ///
-    /// Under no circumstances should the `wait_event` closure return a value higher than `t_next`.
-    ///
-    /// # The `output_handler` closure
-    ///
-    /// The `output_handler` closure behaves as a function that accepts a reference to the model
-    /// under study and propagates the output messages to external entities.
-    /// Every time the model  generates output messages, the `output_handler` closure is called.
-    /// Implementation details of the `output_handler` closure depend on the specific use case.
-    pub fn simulate_rt(
-        &mut self,
-        t_stop: f64,
-        mut wait_event: impl FnMut(f64, &T) -> f64,
-        mut output_handler: impl FnMut(&T),
-    ) {
-        let mut t = 0.;
-        let mut t_next_internal = self.start(t);
-        while t < t_stop {
-            let t_until = f64::min(t_next_internal, t_stop);
-            t = wait_event(t_until, self);
-            if t >= t_next_internal {
-                self.collection(t);
-                output_handler(self);
-            } else if unsafe { self.get_component().is_input_empty() } {
-                continue; // avoid spurious external transitions
-            }
-            t_next_internal = self.transition(t);
-        }
-        self.stop(t_stop);
     }
 }
 
